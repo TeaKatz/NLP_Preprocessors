@@ -1,2 +1,2 @@
 # NLP_Preprocessors
-A Repository gathers all kind of preprocessor modules for NLP.
+A repository gathers all kind of preprocessor modules for NLP.

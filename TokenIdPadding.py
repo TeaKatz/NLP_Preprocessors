@@ -28,6 +28,16 @@ class TokenIdPadding:
         return padding_length
 
     def __call__(self, inputs: list[list[int]]):
+        """
+        inputs: (batch_size, *words_num)
+        *Dimension to pad
+
+        Return dictionary of:
+        {
+            token_ids:
+            padding_masks (optional):
+        }
+        """
         batch_size = len(inputs)
 
         # Get padding_length
@@ -51,6 +61,16 @@ class TokenIdPadding:
                 
 class CharacterLevelWordTokenizerPadding(TokenIdPadding):
     def __call__(self, inputs: list[list[list[int]]]):
+        """
+        inputs: (batch_size, *words_num, *word_length)
+        *Dimension to pad
+
+        Return dictionary of:
+        {
+            token_ids:
+            padding_masks (optional):
+        }
+        """
         batch_size = len(inputs)
 
         # Get padding_length
@@ -78,7 +98,18 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
 
 
 class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
-    def __call__(self, inputs: list[list[list[list[int], list[int]]]]):
+    def __call__(self, inputs: list[list[list[int], list[int]]]):
+        """
+        inputs: (batch_size, *words_num, 2, *word_length)
+        *Dimension to pad
+
+        Return dictionary of:
+        {
+            token_ids:
+            position_ids:
+            padding_masks (optional):
+        }
+        """
         batch_size = len(inputs)
 
         # Get padding_length
