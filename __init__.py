@@ -1,2 +1,2 @@
-from .Tokenizer import LearningBasedTokenizer, HashingBasedTokenizer, CharacterHashWordTokenizer
-from .TokenIdPadding import TokenIdPadding, NestedTokenIdPadding
+from .Tokenizer import CharacterLevelWordTokenizer, RoughPositionalCharacterLevelWordTokenizer, PrecisePositionalCharacterLevelWordTokenizer
+from .TokenIdPadding import TokenIdPadding, CharacterLevelWordTokenizerPadding, PositionalCharacterLevelWordTokenizerPadding

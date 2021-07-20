@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 
 from typing import Union
@@ -18,16 +19,20 @@ class TokenIdPadding:
         self.padding_idx = padding_idx
         self.return_padding_mask = return_padding_mask
 
-    def __call__(self, inputs: list[list[int]]):
-        batch_size = len(inputs)
-
-        # Get padding_length
+    def _get_padding_length(self, inputs):
         if self.padding_length == "static_longest":
             self.padding_length = padding_length = max([len(ids) for ids in inputs])
         elif self.padding_length == "longest":
             padding_length = max([len(ids) for ids in inputs])
         else:
             padding_length = self.padding_length
+        return padding_length
+
+    def __call__(self, inputs: list[list[int]]):
+        batch_size = len(inputs)
+
+        # Get padding_length
+        padding_length = self._get_padding_length(inputs)
 
         # Padding
         outputs = np.full([batch_size, padding_length], self.padding_idx)
@@ -36,20 +41,15 @@ class TokenIdPadding:
         return outputs
                 
                 
-class NestedTokenIdPadding(TokenIdPadding):
+class CharacterLevelWordTokenizerPadding(TokenIdPadding):
     def __call__(self, inputs: list[list[list[int]]]):
         batch_size = len(inputs)
 
         # Get padding_length
-        if self.padding_length == "static_longest":
-            self.padding_length = padding_length = max([len(ids) for ids in inputs])
-        elif self.padding_length == "longest":
-            padding_length = max([len(ids) for ids in inputs])
-        else:
-            padding_length = self.padding_length
+        padding_length = self._get_padding_length(inputs)
 
         # Get sub_padding_length
-        sub_padding_length = max([max([len(sub_ids) for sub_ids in ids]) for ids in inputs])
+        sub_padding_length = max([max([len(sub_items) for sub_items in items]) for items in inputs])
 
         # Padding
         outputs = np.full([batch_size, padding_length, sub_padding_length], self.padding_idx)
@@ -57,3 +57,23 @@ class NestedTokenIdPadding(TokenIdPadding):
             for j in range(len(inputs[i])):
                 outputs[i, j, :len(inputs[i][j])] = inputs[i][j]
         return outputs
+
+
+class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
+    def __call__(self, inputs: list[list[list[tuple[int, int]]]]):
+        batch_size = len(inputs)
+
+        # Get padding_length
+        padding_length = self._get_padding_length(inputs)
+
+        # Get sub_padding_length
+        sub_padding_length = max([max([len(sub_items) for sub_items in items]) for items in inputs])
+
+        # Padding
+        outputs = copy.deepcopy(inputs)
+        for i in range(batch_size):
+            for j in range(len(inputs[i])):
+                outputs[i][j] = outputs[i][j] + [(self.padding_idx, 0)] * (sub_padding_length - len(inputs[i][j]))
+            outputs[i] = outputs[i] + [[self.padding_idx, 0]] * (padding_length - len(inputs[i]))
+        return outputs
+

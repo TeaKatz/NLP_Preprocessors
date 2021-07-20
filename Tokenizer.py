@@ -1,8 +1,10 @@
 import hashlib
 
 from typing import Union
+from nltk.corpus import words
 from abc import abstractmethod
 from nltk import word_tokenize
+from nltk.tokenize import LegalitySyllableTokenizer
 
 
 class BaseTokenizer:
@@ -32,7 +34,7 @@ class BaseTokenizer:
         pass
 
 
-class LearningBasedTokenizer(BaseTokenizer):
+class CorpusBasedTokenizer(BaseTokenizer):
     @abstractmethod
     def tokenize(self, sentence: str):
         """ Convert a given sentence into a sequence of tokens """
@@ -68,29 +70,78 @@ class HashingBasedTokenizer(BaseTokenizer):
         pass
 
 
-class CharacterHashWordTokenizer(HashingBasedTokenizer):
+class CharacterLevelWordTokenizer(HashingBasedTokenizer):
     def tokenize(self, sentence: str):
         """ Convert a given sentence into a sequence of tokens """
         words = word_tokenize(sentence)
         tokens = [list(word) for word in words]
         return tokens
 
-    def collision_test(self, strings: list):
-        """ Return True when no collision in the given strings, and False otherwise """
+    def collision_test(self, words: list):
+        """ Return True when no collision in the given words, and False otherwise """
         cache = {}
-        for string in strings:
-            hash_numbers = self.numerize(string)
+        for word in words:
+            tokens = self.tokenize(word)
+            hash_numbers = self.numerize(tokens[0])
             hash_numbers = tuple(sorted(hash_numbers))
             if hash_numbers not in cache:
-                cache[hash_numbers] = string
+                cache[hash_numbers] = word
             else:
                 return False
         return True
 
-    def numerize(self, chars: list):
+    def numerize(self, chars: list[str]):
         """ Convert a given list of strings into a list of numbers """
         sub = super()
         return [sub.numerize(char) for char in chars]
+
+
+class PositionalCharacterLevelWordTokenizer(HashingBasedTokenizer):
+    def __init__(self, 
+                num_embeddings: int,
+                padding_idx: int=0,
+                max_positional: int=10):
+
+        super().__init__(num_embeddings, padding_idx)
+        self.max_positional = max_positional
+
+    def tokenize(self, sentence: str):
+        """ Convert a given sentence into a sequence of tokens """
+        words = word_tokenize(sentence)
+        tokens = [self.positionize(list(word)) for word in words]
+        return tokens
+
+    def numerize(self, token: list[str]):
+        """ Convert a given list of strings into a list of tuples of number and position """
+        sub = super()
+        return [(sub.numerize(char), pos) for char, pos in token]
+
+    @abstractmethod
+    def positionize(self, chars: list[str]):
+        pass
+
+
+class RoughPositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordTokenizer):
+    def __init__(self, 
+                num_embeddings: int,
+                padding_idx: int=0,
+                max_positional: int=10):
+
+        super().__init__(num_embeddings, padding_idx, max_positional)
+        self.word2syllable = LegalitySyllableTokenizer(words.words())
+
+    def positionize(self, chars: list[str]):
+        syllables = self.word2syllable.tokenize("".join(chars))
+        token = []
+        for i, syllable in enumerate(syllables):
+            for char in syllable:
+                token.append((char, min(i, self.max_positional - 1)))
+        return token
+
+
+class PrecisePositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordTokenizer):
+    def positionize(self, chars: list[str]):
+        return [(char, min(i, self.max_positional - 1)) for i, char in enumerate(chars)]
 
 
 # class _BaseTokenizer:
