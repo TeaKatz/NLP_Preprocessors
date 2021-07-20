@@ -114,7 +114,9 @@ class PositionalCharacterLevelWordTokenizer(HashingBasedTokenizer):
     def numerize(self, token: list[str]):
         """ Convert a given list of strings into a list of tuples of number and position """
         sub = super()
-        return [(sub.numerize(char), pos) for char, pos in token]
+        chars, positions = token
+        numbers = [sub.numerize(char) for char in chars]
+        return numbers, positions
 
     @abstractmethod
     def positionize(self, chars: list[str]):
@@ -132,16 +134,17 @@ class RoughPositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordTok
 
     def positionize(self, chars: list[str]):
         syllables = self.word2syllable.tokenize("".join(chars))
-        token = []
+        positions = []
         for i, syllable in enumerate(syllables):
-            for char in syllable:
-                token.append((char, min(i, self.max_positional - 1)))
-        return token
+            for _ in syllable:
+                positions.append(min(i, self.max_positional - 1))
+        return chars, positions
 
 
 class PrecisePositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordTokenizer):
     def positionize(self, chars: list[str]):
-        return [(char, min(i, self.max_positional - 1)) for i, char in enumerate(chars)]
+        positions = [min(i, self.max_positional - 1) for i in range(len(chars))]
+        return chars, positions
 
 
 # class _BaseTokenizer:
