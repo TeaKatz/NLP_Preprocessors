@@ -1,4 +1,3 @@
-import copy
 import numpy as np
 
 from typing import Union
@@ -73,6 +72,7 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
         # Get padding_mask
         if self.return_padding_mask:
             padding_masks = (token_ids == 0).astype(float)
+            padding_masks = (np.mean(padding_masks, axis=-1) == 1).astype(float)
             returns["padding_masks"] = padding_masks
         return returns
 
@@ -103,6 +103,7 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
         # Get padding_mask
         if self.return_padding_mask:
             padding_masks = (token_ids == 0).astype(float)
+            padding_masks = (np.mean(padding_masks, axis=-1) == 1).astype(float)
             returns["padding_masks"] = padding_masks
         return returns
 

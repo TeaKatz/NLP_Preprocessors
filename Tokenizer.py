@@ -34,18 +34,6 @@ class BaseTokenizer:
         pass
 
 
-class CorpusBasedTokenizer(BaseTokenizer):
-    @abstractmethod
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
-        pass
-
-    @abstractmethod
-    def numerize(self, string: str):
-        """ Convert a given string into a number """
-        pass
-
-
 class HashingBasedTokenizer(BaseTokenizer):
     def numerize(self, string: str):
         """ Convert a given string into a number """
@@ -70,25 +58,18 @@ class HashingBasedTokenizer(BaseTokenizer):
         pass
 
 
+class WordTokenizer(HashingBasedTokenizer):
+    def tokenize(self, sentence: str):
+        """ Convert a given sentence into a sequence of tokens """
+        return word_tokenize(sentence)
+
+
 class CharacterLevelWordTokenizer(HashingBasedTokenizer):
     def tokenize(self, sentence: str):
         """ Convert a given sentence into a sequence of tokens """
         words = word_tokenize(sentence)
         tokens = [list(word) for word in words]
         return tokens
-
-    def collision_test(self, words: list):
-        """ Return True when no collision in the given words, and False otherwise """
-        cache = {}
-        for word in words:
-            tokens = self.tokenize(word)
-            hash_numbers = self.numerize(tokens[0])
-            hash_numbers = tuple(sorted(hash_numbers))
-            if hash_numbers not in cache:
-                cache[hash_numbers] = word
-            else:
-                return False
-        return True
 
     def numerize(self, chars: list[str]):
         """ Convert a given list of strings into a list of numbers """
@@ -145,6 +126,18 @@ class PrecisePositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordT
     def positionize(self, chars: list[str]):
         positions = [min(i, self.max_positional - 1) for i in range(len(chars))]
         return chars, positions
+
+
+class CorpusBasedTokenizer(BaseTokenizer):
+    @abstractmethod
+    def tokenize(self, sentence: str):
+        """ Convert a given sentence into a sequence of tokens """
+        pass
+
+    @abstractmethod
+    def numerize(self, string: str):
+        """ Convert a given string into a number """
+        pass
 
 
 # class _BaseTokenizer:
