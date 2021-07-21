@@ -1,10 +1,10 @@
 import hashlib
 
 from typing import Union
-from nltk.corpus import words
 from abc import abstractmethod
 from nltk import word_tokenize
-from nltk.tokenize import LegalitySyllableTokenizer
+
+from .Utilities import Word2Syllable, word2ngram, word2skipngram, LocalitySensitiveHashing
 
 
 class BaseTokenizer:
@@ -41,16 +41,26 @@ class HashingBasedTokenizer(BaseTokenizer):
         hash_number = max(hash_number, self.padding_idx + len(self.special_tokens))
         return hash_number
 
-    def collision_test(self, strings: list):
-        """ Return True when no collision in the given strings, and False otherwise """
-        cache = {}
-        for string in strings:
-            hash_number = self.numerize(string)
-            if hash_number not in cache:
-                cache[hash_number] = string
-            else:
-                return False
-        return True
+    @abstractmethod
+    def tokenize(self, sentence: str):
+        """ Convert a given sentence into a sequence of tokens """
+        pass
+
+
+class LocalitySensitiveHashingBasedTokenizer(BaseTokenizer):
+    def __init__(self, 
+                 num_embeddings: int, 
+                 padding_idx: int=0,
+                 random_seed: int=0):
+
+        super().__init__(num_embeddings, padding_idx)
+        self.lsh = LocalitySensitiveHashing(num_embeddings, random_seed)
+
+    def numerize(self, string: str):
+        """ Convert a given string into a number """
+        hash_number = self.lsh(string) % self.num_embeddings
+        hash_number = max(hash_number, self.padding_idx + len(self.special_tokens))
+        return hash_number
 
     @abstractmethod
     def tokenize(self, sentence: str):
@@ -62,6 +72,67 @@ class WordTokenizer(HashingBasedTokenizer):
     def tokenize(self, sentence: str):
         """ Convert a given sentence into a sequence of tokens """
         return word_tokenize(sentence)
+
+
+class NgramWordTokenizer(HashingBasedTokenizer):
+    def __init__(self, 
+                 num_embeddings: int, 
+                 padding_idx: int=0,
+                 ngrams: list=(3, 4, 5, 6),
+                 skipngrams: list=(2, 3)):
+        
+        super().__init__(num_embeddings, padding_idx)
+        self.ngrams = ngrams
+        self.skipngrams = skipngrams
+
+    def tokenize(self, sentence: str):
+        """ Convert a given sentence into a sequence of tokens """
+        words = word_tokenize(sentence)
+        tokens = []
+        for word in words:
+            grams = []
+            for n in self.ngrams:
+                grams.extend(word2ngram(word, n))
+            for n in self.skipngrams:
+                grams.extend(word2skipngram(word, n))
+            tokens.append(grams)
+        return tokens
+
+    def numerize(self, grams: list[str]):
+        """ Convert a given list of strings into a list of numbers """
+        sub = super()
+        return [sub.numerize(gram) for gram in grams]
+
+
+class LshNgramWordTokenizer(LocalitySensitiveHashingBasedTokenizer):
+    def __init__(self, 
+                 num_embeddings: int, 
+                 padding_idx: int=0,
+                 random_seed: int=0,
+                 ngrams: list=(3, 4, 5, 6),
+                 skipngrams: list=(2, 3)):
+        
+        super().__init__(num_embeddings, padding_idx, random_seed)
+        self.ngrams = ngrams
+        self.skipngrams = skipngrams
+
+    def tokenize(self, sentence: str):
+        """ Convert a given sentence into a sequence of tokens """
+        words = word_tokenize(sentence)
+        tokens = []
+        for word in words:
+            grams = []
+            for n in self.ngrams:
+                grams.extend(word2ngram(word, n))
+            for n in self.skipngrams:
+                grams.extend(word2skipngram(word, n))
+            tokens.append(grams)
+        return tokens
+
+    def numerize(self, grams: list[str]):
+        """ Convert a given list of strings into a list of numbers """
+        sub = super()
+        return [sub.numerize(gram) for gram in grams]
 
 
 class CharacterLevelWordTokenizer(HashingBasedTokenizer):
@@ -105,16 +176,20 @@ class PositionalCharacterLevelWordTokenizer(HashingBasedTokenizer):
 
 
 class RoughPositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordTokenizer):
+    language_options = ["en", "th"]
+
     def __init__(self, 
                 num_embeddings: int,
                 padding_idx: int=0,
-                max_positional: int=10):
+                max_positional: int=10,
+                language: str="en"):
+        assert language in self.language_options
 
         super().__init__(num_embeddings, padding_idx, max_positional)
-        self.word2syllable = LegalitySyllableTokenizer(words.words())
+        self.word2syllable = Word2Syllable(language)
 
     def positionize(self, chars: list[str]):
-        syllables = self.word2syllable.tokenize("".join(chars))
+        syllables = self.word2syllable("".join(chars))
         positions = []
         for i, syllable in enumerate(syllables):
             for _ in syllable:

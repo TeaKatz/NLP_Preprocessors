@@ -138,3 +138,6 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
             returns["padding_masks"] = padding_masks
         return returns
 
+
+class NgramLevelWordTokenizerPadding(CharacterLevelWordTokenizerPadding):
+    pass
