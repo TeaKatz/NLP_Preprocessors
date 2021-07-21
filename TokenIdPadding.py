@@ -49,7 +49,7 @@ class TokenIdPadding:
         # Padding
         token_ids = np.full([batch_size, padding_length], self.padding_idx)
         for i in range(batch_size):
-            token_ids[i, :len(inputs[i])] = inputs[i]
+            token_ids[i, :len(inputs[i])] = inputs[i][:padding_length]
         returns["token_ids"] = token_ids
 
         # Get padding_mask
@@ -85,8 +85,8 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
         # Padding
         token_ids = np.full([batch_size, padding_length, sub_padding_length], self.padding_idx)
         for i in range(batch_size):
-            for j in range(len(inputs[i])):
-                token_ids[i, j, :len(inputs[i][j])] = inputs[i][j]
+            for j in range(min(len(inputs[i]), padding_length)):
+                token_ids[i, j, :len(inputs[i][j])] = inputs[i][j][:sub_padding_length]
         returns["token_ids"] = token_ids
 
         # Get padding_mask
@@ -125,9 +125,9 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
         token_ids = np.full([batch_size, padding_length, sub_padding_length], self.padding_idx)
         position_ids = np.full([batch_size, padding_length, sub_padding_length], 0)
         for i in range(batch_size):
-            for j in range(len(inputs[i])):
-                token_ids[i, j, :len(inputs[i][j][0])] = inputs[i][j][0]
-                position_ids[i, j, :len(inputs[i][j][1])] = inputs[i][j][1]
+            for j in range(min(len(inputs[i]), padding_length)):
+                token_ids[i, j, :len(inputs[i][j][0])] = inputs[i][j][0][:sub_padding_length]
+                position_ids[i, j, :len(inputs[i][j][1])] = inputs[i][j][1][:sub_padding_length]
         returns["token_ids"] = token_ids
         returns["position_ids"] = position_ids
 
