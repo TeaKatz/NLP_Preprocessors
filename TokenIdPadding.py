@@ -7,7 +7,7 @@ class TokenIdPadding:
     padding_options = ["longest", "static_longest"]
 
     def __init__(self,
-                padding_length: Union[str, int],
+                padding_length: Union[str, int]="longest",
                 padding_idx: int=0,
                 return_padding_mask: bool=False):
 
@@ -64,8 +64,8 @@ class TokenIdPadding:
                 
 class CharacterLevelWordTokenizerPadding(TokenIdPadding):
     def __init__(self,
-                padding_length: Union[str, int],
-                sub_padding_length: Union[str, int],
+                padding_length: Union[str, int]="longest",
+                sub_padding_length: Union[str, int]="longest",
                 padding_idx: int=0,
                 return_padding_mask: bool=False,
                 return_sub_padding_mask: bool=False):
@@ -133,8 +133,8 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
 
 class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
     def __init__(self,
-                padding_length: Union[str, int],
-                sub_padding_length: Union[str, int],
+                padding_length: Union[str, int]="longest",
+                sub_padding_length: Union[str, int]="longest",
                 padding_idx: int=0,
                 return_padding_mask: bool=False,
                 return_sub_padding_mask: bool=False):

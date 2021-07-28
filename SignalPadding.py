@@ -7,7 +7,7 @@ class SignalPadding:
     padding_options = ["longest", "static_longest"]
 
     def __init__(self,
-                padding_length: Union[str, int],
+                padding_length: Union[str, int]="longest",
                 return_padding_mask: bool=False,
                 return_true_length: bool=False):
 
