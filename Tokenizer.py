@@ -12,38 +12,40 @@ class BaseTokenizer:
 
     def __init__(self, 
                 num_embeddings: int, 
-                padding_idx: int=0):
+                padding_idx: int=0,
+                input_word: bool=False):
 
         self.num_embeddings = num_embeddings
         self.padding_idx = padding_idx
+        self.input_word = input_word
 
-    def __call__(self, sentences: Union[list[str], str]):
-        if isinstance(sentences, list):
-            return [[self.numerize(token) for token in self.tokenize(sentence)] for sentence in sentences]
+    def __call__(self, strings: Union[list[str], str]):
+        if isinstance(strings, list):
+            return [[self.numerize(token) for token in self.tokenize(string)] for string in strings]
         else:
-            return [self.numerize(token) for token in self.tokenize(sentences)]
+            return [self.numerize(token) for token in self.tokenize(strings)]
 
     @abstractmethod
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
         pass
 
     @abstractmethod
-    def numerize(self, string: str):
-        """ Convert a given string into a number """
+    def numerize(self, token: str):
+        """ Convert a given token into a number """
         pass
 
 
 class HashingBasedTokenizer(BaseTokenizer):
-    def numerize(self, string: str):
-        """ Convert a given string into a number """
-        hash_number = int(hashlib.sha3_224(bytes(string, "utf8")).hexdigest(), 16) % self.num_embeddings
+    def numerize(self, token: str):
+        """ Convert a given token into a number """
+        hash_number = int(hashlib.sha3_224(bytes(token, "utf8")).hexdigest(), 16) % self.num_embeddings
         hash_number = max(hash_number, self.padding_idx + len(self.special_tokens))
         return hash_number
 
     @abstractmethod
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
         pass
 
 
@@ -56,22 +58,22 @@ class LocalitySensitiveHashingBasedTokenizer(BaseTokenizer):
         super().__init__(num_embeddings, padding_idx)
         self.lsh = LocalitySensitiveHashing(num_embeddings, random_seed)
 
-    def numerize(self, string: str):
-        """ Convert a given string into a number """
-        hash_number = self.lsh(string) % self.num_embeddings
+    def numerize(self, token: str):
+        """ Convert a given token into a number """
+        hash_number = self.lsh(token) % self.num_embeddings
         hash_number = max(hash_number, self.padding_idx + len(self.special_tokens))
         return hash_number
 
     @abstractmethod
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
         pass
 
 
 class WordTokenizer(HashingBasedTokenizer):
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
-        return word_tokenize(sentence)
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
+        return word_tokenize(string) if not self.input_word else [string]
 
 
 class NgramWordTokenizer(HashingBasedTokenizer):
@@ -85,9 +87,9 @@ class NgramWordTokenizer(HashingBasedTokenizer):
         self.ngrams = ngrams
         self.skipngrams = skipngrams
 
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
-        words = word_tokenize(sentence)
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
+        words = word_tokenize(string) if not self.input_word else [string]
         tokens = []
         for word in words:
             grams = []
@@ -99,7 +101,7 @@ class NgramWordTokenizer(HashingBasedTokenizer):
         return tokens
 
     def numerize(self, grams: list[str]):
-        """ Convert a given list of strings into a list of numbers """
+        """ Convert a given list of tokens into a list of numbers """
         sub = super()
         return [sub.numerize(gram) for gram in grams]
 
@@ -116,9 +118,9 @@ class LshNgramWordTokenizer(LocalitySensitiveHashingBasedTokenizer):
         self.ngrams = ngrams
         self.skipngrams = skipngrams
 
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
-        words = word_tokenize(sentence)
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
+        words = word_tokenize(string) if not self.input_word else [string]
         tokens = []
         for word in words:
             grams = []
@@ -130,20 +132,20 @@ class LshNgramWordTokenizer(LocalitySensitiveHashingBasedTokenizer):
         return tokens
 
     def numerize(self, grams: list[str]):
-        """ Convert a given list of strings into a list of numbers """
+        """ Convert a given list of tokens into a list of numbers """
         sub = super()
         return [sub.numerize(gram) for gram in grams]
 
 
 class CharacterLevelWordTokenizer(HashingBasedTokenizer):
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
-        words = word_tokenize(sentence)
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
+        words = word_tokenize(string) if not self.input_word else [string]
         tokens = [list(word) for word in words]
         return tokens
 
     def numerize(self, chars: list[str]):
-        """ Convert a given list of strings into a list of numbers """
+        """ Convert a given list of tokens into a list of numbers """
         sub = super()
         return [sub.numerize(char) for char in chars]
 
@@ -157,14 +159,14 @@ class PositionalCharacterLevelWordTokenizer(HashingBasedTokenizer):
         super().__init__(num_embeddings, padding_idx)
         self.max_positional = max_positional
 
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
-        words = word_tokenize(sentence)
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
+        words = word_tokenize(string) if not self.input_word else [string]
         tokens = [self.positionize(list(word)) for word in words]
         return tokens
 
     def numerize(self, token: list[str]):
-        """ Convert a given list of strings into a list of tuples of number and position """
+        """ Convert a given list of tokens into a list of tuples of number and position """
         sub = super()
         chars, positions = token
         numbers = [sub.numerize(char) for char in chars]
@@ -205,13 +207,13 @@ class PrecisePositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordT
 
 class CorpusBasedTokenizer(BaseTokenizer):
     @abstractmethod
-    def tokenize(self, sentence: str):
-        """ Convert a given sentence into a sequence of tokens """
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
         pass
 
     @abstractmethod
-    def numerize(self, string: str):
-        """ Convert a given string into a number """
+    def numerize(self, token: str):
+        """ Convert a given token into a number """
         pass
 
 

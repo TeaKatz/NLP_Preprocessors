@@ -57,7 +57,7 @@ class SignalPadding:
             if self.return_padding_mask:
                 padding_masks[i, :len(inputs[i])] = 0.
             if self.return_true_length:
-                true_lengths[i] = len(inputs[i])
+                true_lengths[i] = min(len(inputs[i]), padding_length)
 
         # Return
         returns["signals"] = signals

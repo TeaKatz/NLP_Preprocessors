@@ -9,7 +9,8 @@ class TokenIdPadding:
     def __init__(self,
                 padding_length: Union[str, int]="longest",
                 padding_idx: int=0,
-                return_padding_mask: bool=False):
+                return_padding_mask: bool=False,
+                return_true_length: bool=False):
 
         if isinstance(padding_length, str):
             assert padding_length in self.padding_options
@@ -17,6 +18,7 @@ class TokenIdPadding:
         self.padding_length = padding_length
         self.padding_idx = padding_idx
         self.return_padding_mask = return_padding_mask
+        self.return_true_length = return_true_length
 
     def _get_padding_length(self, inputs):
         if self.padding_length == "static_longest":
@@ -48,17 +50,23 @@ class TokenIdPadding:
         token_ids = np.full([batch_size, padding_length], self.padding_idx, dtype=int)
         if self.return_padding_mask:
             padding_masks = np.ones([batch_size, padding_length], dtype=float)
+        if self.return_true_length:
+            true_lengths = np.zeros([batch_size], dtype=int)
 
         # Padding
         for i in range(batch_size):
             token_ids[i, :len(inputs[i])] = inputs[i][:padding_length]
             if self.return_padding_mask:
                 padding_masks[i, :len(inputs[i])] = 0.
+            if self.return_true_length:
+                true_lengths[i] = min(len(inputs[i]), padding_length)
 
         # Return
         returns["token_ids"] = token_ids
         if self.return_padding_mask:
             returns["padding_masks"] = padding_masks
+        if self.return_true_length:
+            returns["true_lengths"] = true_lengths
         return returns
 
                 
@@ -68,14 +76,17 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
                 sub_padding_length: Union[str, int]="longest",
                 padding_idx: int=0,
                 return_padding_mask: bool=False,
-                return_sub_padding_mask: bool=False):
+                return_sub_padding_mask: bool=False,
+                return_true_length: bool=False,
+                return_true_sub_length: bool=False):
 
         if isinstance(sub_padding_length, str):
             assert sub_padding_length in self.padding_options
 
-        super().__init__(padding_length, padding_idx, return_padding_mask)
+        super().__init__(padding_length, padding_idx, return_padding_mask, return_true_length)
         self.sub_padding_length = sub_padding_length
         self.return_sub_padding_mask = return_sub_padding_mask
+        self.return_true_sub_length = return_true_sub_length
 
     def _get_sub_padding_length(self, inputs):
         if self.sub_padding_length == "static_longest":
@@ -112,15 +123,24 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
             padding_masks = np.ones([batch_size, padding_length], dtype=float)
         if self.return_sub_padding_mask:
             sub_padding_masks = np.ones([batch_size, padding_length, sub_padding_length], dtype=float)
+        if self.return_true_length:
+            true_lengths = np.zeros([batch_size], dtype=int)
+        if self.return_true_sub_length:
+            true_sub_lengths = np.zeros([batch_size, padding_length], dtype=int)
 
         # Padding
         for i in range(batch_size):
+            if self.return_padding_mask:
+                padding_masks[i, :len(input[i])] = 0.
+            if self.return_true_length:
+                true_lengths[i] = min(len(inputs[i]), padding_length)
+
             for j in range(min(len(inputs[i]), padding_length)):
                 token_ids[i, j, :len(inputs[i][j])] = inputs[i][j][:sub_padding_length]
-                if self.return_padding_mask:
-                    padding_masks[i, j] = 0.
                 if self.return_sub_padding_mask:
                     sub_padding_masks[i, j, :len(inputs[i][j])] = 0.
+                if self.return_true_sub_length:
+                    true_sub_lengths[i, j] = min(len(inputs[i][j]), sub_padding_length)
 
         # Return
         returns["token_ids"] = token_ids
@@ -128,6 +148,10 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
             returns["padding_masks"] = padding_masks
         if self.return_sub_padding_mask:
             returns["sub_padding_masks"] = sub_padding_masks
+        if self.return_true_length:
+            returns["true_lengths"] = true_lengths
+        if self.return_true_sub_length:
+            returns["true_sub_lengths"] = true_sub_lengths
         return returns
 
 
@@ -137,14 +161,17 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
                 sub_padding_length: Union[str, int]="longest",
                 padding_idx: int=0,
                 return_padding_mask: bool=False,
-                return_sub_padding_mask: bool=False):
+                return_sub_padding_mask: bool=False,
+                return_true_length: bool=False,
+                return_true_sub_length: bool=False):
 
         if isinstance(sub_padding_length, str):
             assert sub_padding_length in self.padding_options
 
-        super().__init__(padding_length, padding_idx, return_padding_mask)
+        super().__init__(padding_length, padding_idx, return_padding_mask, return_true_length)
         self.sub_padding_length = sub_padding_length
         self.return_sub_padding_mask = return_sub_padding_mask
+        self.return_true_sub_length = return_true_sub_length
 
     def _get_sub_padding_length(self, inputs):
         if self.sub_padding_length == "static_longest":
@@ -183,16 +210,25 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
             padding_masks = np.ones([batch_size, padding_length], dtype=float)
         if self.return_sub_padding_mask:
             sub_padding_masks = np.ones([batch_size, padding_length, sub_padding_length], dtype=float)
+        if self.return_true_length:
+            true_lengths = np.zeros([batch_size], dtype=int)
+        if self.return_true_sub_length:
+            true_sub_lengths = np.zeros([batch_size, padding_length], dtype=int)
 
         # Padding
         for i in range(batch_size):
+            if self.return_padding_mask:
+                padding_masks[i, :len(input[i])] = 0.
+            if self.return_true_length:
+                true_lengths[i] = min(len(inputs[i]), padding_length)
+
             for j in range(min(len(inputs[i]), padding_length)):
                 token_ids[i, j, :len(inputs[i][j][0])] = inputs[i][j][0][:sub_padding_length]
                 position_ids[i, j, :len(inputs[i][j][1])] = inputs[i][j][1][:sub_padding_length]
-                if self.return_padding_mask:
-                    padding_masks[i, j] = 0.
                 if self.return_sub_padding_mask:
                     sub_padding_masks[i, j, :len(inputs[i][j][1])] = 0.
+                if self.return_true_sub_length:
+                    true_sub_lengths[i, j] = min(len(inputs[i][j][0]), sub_padding_length)
 
         # Return
         returns["token_ids"] = token_ids
@@ -201,6 +237,10 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
             returns["padding_masks"] = padding_masks
         if self.return_sub_padding_mask:
             returns["sub_padding_masks"] = sub_padding_masks
+        if self.return_true_length:
+            returns["true_lengths"] = true_lengths
+        if self.return_true_sub_length:
+            returns["true_sub_lengths"] = true_sub_lengths
         return returns
 
 
