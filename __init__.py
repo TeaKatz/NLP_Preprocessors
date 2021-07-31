@@ -1,3 +1,13 @@
-from .Tokenizer import WordTokenizer, NgramWordTokenizer, LshNgramWordTokenizer, CharacterLevelWordTokenizer, RoughPositionalCharacterLevelWordTokenizer, PrecisePositionalCharacterLevelWordTokenizer
-from .TokenIdPadding import TokenIdPadding, CharacterLevelWordTokenizerPadding, PositionalCharacterLevelWordTokenizerPadding, NgramLevelWordTokenizerPadding
+from .Tokenizer import WordTokenizer
+from .Tokenizer import NgramLevelWordTokenizer
+from .Tokenizer import LshNgramLevelWordTokenizer
+from .Tokenizer import CharacterLevelWordTokenizer
+from .Tokenizer import RoughPositionalCharacterLevelWordTokenizer
+from .Tokenizer import PrecisePositionalCharacterLevelWordTokenizer
+
+from .TokenIdPadding import TokenIdPadding
+from .TokenIdPadding import CharacterLevelWordTokenizerPadding
+from .TokenIdPadding import PositionalCharacterLevelWordTokenizerPadding
+from .TokenIdPadding import NgramLevelWordTokenizerPadding
+
 from .SignalPadding import SignalPadding

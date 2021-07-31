@@ -76,7 +76,7 @@ class WordTokenizer(HashingBasedTokenizer):
         return word_tokenize(string) if not self.input_word else [string]
 
 
-class NgramWordTokenizer(HashingBasedTokenizer):
+class NgramLevelWordTokenizer(HashingBasedTokenizer):
     def __init__(self, 
                  num_embeddings: int, 
                  padding_idx: int=0,
@@ -106,7 +106,7 @@ class NgramWordTokenizer(HashingBasedTokenizer):
         return [sub.numerize(gram) for gram in grams]
 
 
-class LshNgramWordTokenizer(LocalitySensitiveHashingBasedTokenizer):
+class LshNgramLevelWordTokenizer(LocalitySensitiveHashingBasedTokenizer):
     def __init__(self, 
                  num_embeddings: int, 
                  padding_idx: int=0,
