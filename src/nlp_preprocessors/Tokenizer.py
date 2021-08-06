@@ -4,7 +4,7 @@ from typing import Union
 from abc import abstractmethod
 from nltk import word_tokenize
 
-from .Utilities import Word2Syllable, word2ngram, word2skipngram, LocalitySensitiveHashing
+from .utilities import Word2Syllable, word2ngram, word2skipngram, LocalitySensitiveHashing
 
 
 class BaseTokenizer:
