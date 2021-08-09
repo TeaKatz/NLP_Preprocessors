@@ -13,3 +13,4 @@ from .TokenIdPadding import NgramLevelWordTokenizerPadding
 from .SignalPadding import SignalPadding
 
 from .Preprocessor import SequentialPreprocessor
+from .Preprocessor import ProcessShortcut

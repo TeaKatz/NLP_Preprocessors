@@ -1,5 +1,7 @@
 import hashlib
 
+import numpy as np
+
 from typing import Union
 from abc import abstractmethod
 from nltk import word_tokenize
@@ -215,6 +217,32 @@ class CorpusBasedTokenizer(BaseTokenizer):
     def numerize(self, token: str):
         """ Convert a given token into a number """
         pass
+
+
+class SignalTokenizer:
+    def __init__(self, 
+                num_embeddings: int,
+                window_size: int=100,
+                stride: int=1,
+                padding: float=0.0,
+                padding_idx: int=0):
+
+        self.num_embeddings = num_embeddings
+        self.window_size = window_size
+        self.stride = stride
+        self.padding = padding
+        self.padding_idx = padding_idx
+
+    def __call__(self, signals: list[np.ndarray]):
+        return [[self.numerize(token) for token in self.tokenizer(signal)] for signal in signals]
+
+    def tokenizer(self, signal: np.ndarray):
+        padding_size = 0
+        signal = np.pad(signal, (0, padding_size), "constant", constant_values=self.padding)
+
+    def numerize(self, token: np.ndarray):
+        pass
+
 
 
 # class _BaseTokenizer:
