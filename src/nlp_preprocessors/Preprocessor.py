@@ -38,6 +38,9 @@ class ProcessShortcut:
         if key is None:
             key = inputs
 
+        if isinstance(key, str):
+            key = key.upper()
+
         if key in self.data:
             outputs = self.data[key]
         else:
