@@ -4,6 +4,8 @@ from .Tokenizer import LshNgramLevelWordTokenizer
 from .Tokenizer import CharacterLevelWordTokenizer
 from .Tokenizer import RoughPositionalCharacterLevelWordTokenizer
 from .Tokenizer import PrecisePositionalCharacterLevelWordTokenizer
+from .Tokenizer import SignalTokenizer
+from .Tokenizer import SignalDerivativeTokenizer
 
 from .TokenIdPadding import TokenIdPadding
 from .TokenIdPadding import CharacterLevelWordTokenizerPadding
