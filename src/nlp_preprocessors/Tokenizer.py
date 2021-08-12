@@ -314,24 +314,29 @@ class ImageTokenizer(BaseTokenizer):
         tokens = np.empty([output_height, output_width, self.window_height, self.window_width])
         for i in range(output_height):
             for j in range(output_width):
-                tokens[i, j] = image[start_row:end_row, start_col:end_col]
-
-        # # Calculate padding size
-        # output_length = math.ceil((signal_length - self.window_size) / self.stride + 1)
-        # padding_size = (output_length - 1) * self.stride - signal_length + self.window_size
-        # # Padding
-        # signal = np.pad(signal, (0, padding_size), "constant", constant_values=self.padding_value)
-        # # Tokenize
-        # tokens = np.concatenate([signal[np.newaxis, i * self.stride:i * self.stride + self.window_size] for i in range(output_length)], axis=0)
+                # Get start and end indices
+                start_y = i * self.stride
+                end_y = start_y + self.window_height
+                start_x = i * self.stride
+                end_x = start_x + self.window_width
+                # Get token
+                tokens[i, j] = image[start_y:end_y, start_x:end_x]
         return tokens
 
     def numerize(self, tokens: np.ndarray):
         """
-        tokens: (output_length, window_size)
-        return: (output_length, )
+        tokens: (output_height, output_width, window_height, window_width)
+        return: (output_height, output_width)
         """
+        # Reshape tokens
+        output_height, output_width, _, _ = tokens.shape
+        tokens = tokens.reshape(output_height, output_width, -1)
+
+        # (output_height, output_width, log(num_embeddings, 2))
         binary_vecs = (tokens @ self.random_vecs.T > 0).astype(int)
-        return [int("".join([str(val) for val in vector]), 2) % self.num_embeddings for vector in binary_vecs] 
+        # numbers = np.zeros([output_height, output_width], dtype=int)
+        numbers = np.apply_along_axis(lambda x: int("".join(x), 2) % self.num_embeddings, -1, binary_vecs)
+        return numbers
 
 
 class SpectrogramTokenizer(SignalTokenizer):
