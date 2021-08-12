@@ -3,7 +3,6 @@ import hashlib
 
 import numpy as np
 
-from typing import Union
 from abc import abstractmethod
 from nltk import word_tokenize
 
@@ -14,6 +13,28 @@ from .utilities import LocalitySensitiveHashing
 
 
 class BaseTokenizer:
+    def __init__(self, 
+                num_embeddings: int, 
+                padding_idx: int=0):
+
+        self.num_embeddings = num_embeddings
+        self.padding_idx = padding_idx
+
+    def __call__(self, inputs: list):
+        return [[self.numerize(token) for token in self.tokenize(inp)] for inp in inputs]
+
+    @abstractmethod
+    def tokenize(self, inp):
+        """ Convert a given input into a sequence of tokens """
+        pass
+
+    @abstractmethod
+    def numerize(self, token):
+        """ Convert a given token into a number """
+        pass
+
+
+class TextTokenizer(BaseTokenizer):
     special_tokens = ["<PAD>", "<CLS>", "<SEP>", "<MASK>", "<UNK>"]
 
     def __init__(self, 
@@ -21,41 +42,19 @@ class BaseTokenizer:
                 padding_idx: int=0,
                 input_word: bool=False):
 
-        self.num_embeddings = num_embeddings
-        self.padding_idx = padding_idx
+        super().__init__(num_embeddings, padding_idx)
         self.input_word = input_word
 
-    def __call__(self, strings: Union[list[str], str]):
-        if isinstance(strings, list):
-            return [[self.numerize(token) for token in self.tokenize(string)] for string in strings]
-        else:
-            return [self.numerize(token) for token in self.tokenize(strings)]
 
-    @abstractmethod
-    def tokenize(self, string: str):
-        """ Convert a given string into a sequence of tokens """
-        pass
-
-    @abstractmethod
-    def numerize(self, token: str):
-        """ Convert a given token into a number """
-        pass
-
-
-class HashingBasedTokenizer(BaseTokenizer):
+class HashingBasedTokenizer(TextTokenizer):
     def numerize(self, token: str):
         """ Convert a given token into a number """
         hash_number = int(hashlib.sha3_224(bytes(token, "utf8")).hexdigest(), 16) % self.num_embeddings
         hash_number = max(hash_number, self.padding_idx + len(self.special_tokens))
         return hash_number
 
-    @abstractmethod
-    def tokenize(self, string: str):
-        """ Convert a given string into a sequence of tokens """
-        pass
 
-
-class LocalitySensitiveHashingBasedTokenizer(BaseTokenizer):
+class LocalitySensitiveHashingBasedTokenizer(TextTokenizer):
     def __init__(self, 
                  num_embeddings: int, 
                  padding_idx: int=0,
@@ -69,11 +68,6 @@ class LocalitySensitiveHashingBasedTokenizer(BaseTokenizer):
         hash_number = self.lsh(token) % self.num_embeddings
         hash_number = max(hash_number, self.padding_idx + len(self.special_tokens))
         return hash_number
-
-    @abstractmethod
-    def tokenize(self, string: str):
-        """ Convert a given string into a sequence of tokens """
-        pass
 
 
 class WordTokenizer(HashingBasedTokenizer):
@@ -211,27 +205,16 @@ class PrecisePositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordT
         return chars, positions
 
 
-class CorpusBasedTokenizer(BaseTokenizer):
-    @abstractmethod
-    def tokenize(self, string: str):
-        """ Convert a given string into a sequence of tokens """
-        pass
-
-    @abstractmethod
-    def numerize(self, token: str):
-        """ Convert a given token into a number """
-        pass
-
-
-class SignalTokenizer:
+class SignalTokenizer(BaseTokenizer):
     def __init__(self, 
                 num_embeddings: int,
+                padding_idx: int=0,
                 window_size: int=1000,
                 stride: int=100,
                 padding_value: float=0.0,
                 random_seed: int=0):
 
-        self.num_embeddings = num_embeddings
+        super().__init__(num_embeddings, padding_idx)
         self.window_size = window_size
         self.stride = stride
         self.padding_value = padding_value
@@ -264,7 +247,9 @@ class SignalTokenizer:
         return: (output_length, )
         """
         binary_vecs = (tokens @ self.random_vecs.T > 0).astype(int)
-        return [int("".join([str(val) for val in vector]), 2) % self.num_embeddings for vector in binary_vecs]
+        numbers = [int("".join([str(val) for val in vector]), 2) % self.num_embeddings for vector in binary_vecs]
+        numbers = [max(number, self.padding_idx + 1) for number in numbers]
+        return numbers
 
 
 class SignalDerivativeTokenizer(SignalTokenizer):
@@ -274,6 +259,124 @@ class SignalDerivativeTokenizer(SignalTokenizer):
         return: (output_length, window_size)
         """
         signal = signal[1:] - signal[:-1]
+        signal_length = signal.shape[0]
+
+        # Calculate padding size
+        output_length = math.ceil((signal_length - self.window_size) / self.stride + 1)
+        padding_size = (output_length - 1) * self.stride - signal_length + self.window_size
+        # Padding
+        signal = np.pad(signal, (0, padding_size), "constant", constant_values=self.padding_value)
+        # Tokenize
+        tokens = np.concatenate([signal[np.newaxis, i * self.stride:i * self.stride + self.window_size] for i in range(output_length)], axis=0)
+        return tokens
+
+
+class ImageTokenizer(BaseTokenizer):
+    def __init__(self,
+                 num_embeddings: int,
+                 padding_idx: int=0,
+                 window_height: int=9,
+                 window_width: int=9,
+                 stride: int=1,
+                 padding_value: float=0,
+                 random_seed: int=0):
+
+        super().__init__(num_embeddings, padding_idx)
+        self.window_height = window_height
+        self.window_width = window_width
+        self.stride = stride
+        self.padding_value = padding_value
+
+        np.random.seed(random_seed)
+        self.random_vecs = np.random.normal(size=[math.ceil(math.log(num_embeddings, 2)), window_height * window_width])
+
+    def __call__(self, images: list[np.ndarray]):
+        return [self.numerize(self.tokenizer(image)) for image in images]
+
+    def tokenizer(self, image: np.ndarray):
+        """
+        image: (height, width)
+        return: (output_height, output_width, window_height, window_width)
+        """
+        height, width = image.shape
+
+        # Calculate padding size
+        output_height = math.ceil((height - self.window_height) / self.stride + 1)
+        height_padding_size = (output_height - 1) * self.stride - height + self.window_height
+
+        output_width = math.ceil((width - self.window_width) / self.stride + 1)
+        width_padding_size = (output_width - 1) * self.stride - width + self.window_width
+
+        # Padding
+        image = np.pad(image, (height_padding_size, width_padding_size), "constant", constant_values=self.padding_value)
+
+        # Tokenize
+        tokens = np.empty([output_height, output_width, self.window_height, self.window_width])
+        for i in range(output_height):
+            for j in range(output_width):
+                tokens[i, j] = image[start_row:end_row, start_col:end_col]
+
+        # # Calculate padding size
+        # output_length = math.ceil((signal_length - self.window_size) / self.stride + 1)
+        # padding_size = (output_length - 1) * self.stride - signal_length + self.window_size
+        # # Padding
+        # signal = np.pad(signal, (0, padding_size), "constant", constant_values=self.padding_value)
+        # # Tokenize
+        # tokens = np.concatenate([signal[np.newaxis, i * self.stride:i * self.stride + self.window_size] for i in range(output_length)], axis=0)
+        return tokens
+
+    def numerize(self, tokens: np.ndarray):
+        """
+        tokens: (output_length, window_size)
+        return: (output_length, )
+        """
+        binary_vecs = (tokens @ self.random_vecs.T > 0).astype(int)
+        return [int("".join([str(val) for val in vector]), 2) % self.num_embeddings for vector in binary_vecs] 
+
+
+class SpectrogramTokenizer(SignalTokenizer):
+    def __init__(self, 
+                num_embeddings: int,
+                sampling_rate: int=22050,
+                n_fft: int=2000,
+                hop_length=100,
+                window_size: int=9,
+                stride: int=1,
+                padding_value: float=-80,
+                random_seed: int=0):
+
+        super().__init__(num_embeddings, window_size, stride, padding_value, random_seed)
+        self.sampling_rate = sampling_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+
+        np.random.seed(random_seed)
+        self.random_vecs = np.random.normal(size=[math.ceil(math.log(num_embeddings, 2)), window_size * window_size])
+
+    def shorten_signal(signal, threshold=1e-3, offset=500):
+        start_id = 0
+        for i in np.arange(signal.shape[0]):
+            value = signal[i]
+            if abs(value) > threshold:
+                start_id = i
+                break
+
+        end_id = math.inf
+        for i in np.arange(signal.shape[0])[::-1]:
+            value = signal[i]
+            if abs(value) > threshold:
+                end_id = i
+                break
+                
+        signal = signal[start_id - offset:end_id + offset]
+        return signal
+
+    def tokenizer(self, signal: np.ndarray):
+        """
+        signal: (signal_length, )
+        return: (output_length, window_size)
+        """
+        signal = self.shorten_signal(signal)
         signal_length = signal.shape[0]
 
         # Calculate padding size
