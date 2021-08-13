@@ -36,6 +36,10 @@ def shorten_signal(signal, threshold=1e-3, offset=100):
     return signal
 
 
+def array2str(array):
+    return str(array).replace("[", "").replace("]", "").replace(" ", "")
+
+
 class Word2Syllable:
     language_options = ["en", "th"]
 

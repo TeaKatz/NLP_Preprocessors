@@ -6,12 +6,14 @@ import numpy as np
 
 from abc import abstractmethod
 from nltk import word_tokenize
+from numpy.core.defchararray import array
 
 from .utilities import Word2Syllable
 from .utilities import word2ngram
 from .utilities import word2skipngram
 from .utilities import LocalitySensitiveHashing
 from .utilities import shorten_signal
+from .utilities import array2str
 
 
 class BaseTokenizer:
@@ -229,9 +231,9 @@ class SignalTokenizer(BaseTokenizer):
         self.random_vecs = np.random.normal(size=[math.ceil(math.log(num_embeddings, 2)), window_size])
 
     def __call__(self, signals: list[np.ndarray]):
-        return [self.numerize(self.tokenizer(signal)) for signal in signals]
+        return [self.numerize(self.tokenize(signal)) for signal in signals]
 
-    def tokenizer(self, signal: np.ndarray):
+    def tokenize(self, signal: np.ndarray):
         """
         signal: (signal_length, )
         return: (output_length, window_size)
@@ -254,13 +256,13 @@ class SignalTokenizer(BaseTokenizer):
         return: (output_length, )
         """
         binary_vecs = (tokens @ self.random_vecs.T > 0).astype(int)
-        numbers = [int("".join([str(val) for val in vector]), 2) % self.num_embeddings for vector in binary_vecs]
+        numbers = [int(array2str(vector), 2) % self.num_embeddings for vector in binary_vecs]
         numbers = [max(number, self.padding_idx + 1) for number in numbers]
-        return numbers
+        return  np.array(numbers)
 
 
 class SignalDerivativeTokenizer(SignalTokenizer):
-    def tokenizer(self, signal: np.ndarray):
+    def tokenize(self, signal: np.ndarray):
         """
         signal: (signal_length, )
         return: (output_length, window_size)
@@ -299,9 +301,9 @@ class ImageTokenizer(BaseTokenizer):
         self.random_vecs = np.random.normal(size=[math.ceil(math.log(num_embeddings, 2)), window_height * window_width])
 
     def __call__(self, images: list[np.ndarray]):
-        return [self.numerize(self.tokenizer(image)) for image in images]
+        return [self.numerize(self.tokenize(image)) for image in images]
 
-    def tokenizer(self, image: np.ndarray):
+    def tokenize(self, image: np.ndarray):
         """
         image: (height, width)
         return: (output_height, output_width, window_height, window_width)
@@ -316,7 +318,7 @@ class ImageTokenizer(BaseTokenizer):
         width_padding_size = (output_width - 1) * self.stride - width + self.window_width
 
         # Padding
-        image = np.pad(image, (height_padding_size, width_padding_size), "constant", constant_values=self.padding_value)
+        image = np.pad(image, ((0, height_padding_size), (0, width_padding_size)), "constant", constant_values=self.padding_value)
 
         # Tokenize
         tokens = np.empty([output_height, output_width, self.window_height, self.window_width])
@@ -325,10 +327,10 @@ class ImageTokenizer(BaseTokenizer):
                 # Get start and end indices
                 start_y = i * self.stride
                 end_y = start_y + self.window_height
-                start_x = i * self.stride
+                start_x = j * self.stride
                 end_x = start_x + self.window_width
                 # Get token
-                tokens[i, j] = image[start_y:end_y, start_x:end_x]
+                tokens[output_height - i - 1, j] = image[start_y:end_y, start_x:end_x]
         return tokens
 
     def numerize(self, tokens: np.ndarray):
@@ -342,8 +344,8 @@ class ImageTokenizer(BaseTokenizer):
 
         # (output_height, output_width, log(num_embeddings, 2))
         binary_vecs = (tokens @ self.random_vecs.T > 0).astype(int)
-        # numbers = np.zeros([output_height, output_width], dtype=int)
-        numbers = np.apply_along_axis(lambda x: int("".join(x), 2) % self.num_embeddings, -1, binary_vecs)
+        numbers = np.apply_along_axis(lambda x: int(array2str(x), 2) % self.num_embeddings, -1, binary_vecs)
+        numbers = np.maximum(numbers, self.padding_idx + 1)
         return numbers
 
 
@@ -357,7 +359,7 @@ class SignalSpectrogramTokenizer(ImageTokenizer):
                  window_height: int=9,
                  window_width: int=9,
                  stride: int=1,
-                 padding_value: float=-80,
+                 padding_value: float=0,
                  shorten_threshold: float=1e-3,
                  shorten_offset: int=500,
                  random_seed: int=0):
@@ -369,7 +371,7 @@ class SignalSpectrogramTokenizer(ImageTokenizer):
         self.shorten_threshold = shorten_threshold
         self.shorten_offset = shorten_offset
 
-    def tokenizer(self, signal: np.ndarray):
+    def tokenize(self, signal: np.ndarray):
         """
         signal: (signal_length, )
         return: (output_height, output_width, window_height, window_width)
@@ -378,7 +380,8 @@ class SignalSpectrogramTokenizer(ImageTokenizer):
         signal = shorten_signal(signal, threshold=self.shorten_threshold, offset=self.shorten_offset)
         spectrogram = librosa.feature.melspectrogram(y=signal, sr=self.sampling_rate, n_fft=self.n_fft, hop_length=self.hop_length)
         spectrogram = librosa.power_to_db(spectrogram, ref=np.max)
-        return super().tokenizer(spectrogram)
+        spectrogram = (spectrogram + 40) / 40
+        return super().tokenize(spectrogram)
 
 
 # class _BaseTokenizer:
@@ -409,7 +412,7 @@ class SignalSpectrogramTokenizer(ImageTokenizer):
 #         return self.padding(token_ids)
 
 #     @abstractmethod
-#     def tokenizer(self, text):
+#     def tokenize(self, text):
 #         pass
 
 #     def text2ids(self, text, start_token=False, end_token=False):
