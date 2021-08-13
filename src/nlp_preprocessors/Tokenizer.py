@@ -1,5 +1,6 @@
 import math
 import hashlib
+import librosa
 
 import numpy as np
 
@@ -10,6 +11,7 @@ from .utilities import Word2Syllable
 from .utilities import word2ngram
 from .utilities import word2skipngram
 from .utilities import LocalitySensitiveHashing
+from .utilities import shorten_signal
 
 
 class BaseTokenizer:
@@ -212,12 +214,16 @@ class SignalTokenizer(BaseTokenizer):
                 window_size: int=1000,
                 stride: int=100,
                 padding_value: float=0.0,
+                shorten_threshold: float=1e-3,
+                shorten_offset: int=500,
                 random_seed: int=0):
 
         super().__init__(num_embeddings, padding_idx)
         self.window_size = window_size
         self.stride = stride
         self.padding_value = padding_value
+        self.shorten_threshold = shorten_threshold
+        self.shorten_offset = shorten_offset
 
         np.random.seed(random_seed)
         self.random_vecs = np.random.normal(size=[math.ceil(math.log(num_embeddings, 2)), window_size])
@@ -230,6 +236,7 @@ class SignalTokenizer(BaseTokenizer):
         signal: (signal_length, )
         return: (output_length, window_size)
         """
+        signal = shorten_signal(signal, threshold=self.shorten_threshold, offset=self.shorten_offset)
         signal_length = signal.shape[0]
 
         # Calculate padding size
@@ -258,6 +265,7 @@ class SignalDerivativeTokenizer(SignalTokenizer):
         signal: (signal_length, )
         return: (output_length, window_size)
         """
+        signal = shorten_signal(signal, threshold=self.shorten_threshold, offset=self.shorten_offset)
         signal = signal[1:] - signal[:-1]
         signal_length = signal.shape[0]
 
@@ -339,59 +347,38 @@ class ImageTokenizer(BaseTokenizer):
         return numbers
 
 
-class SpectrogramTokenizer(SignalTokenizer):
-    def __init__(self, 
-                num_embeddings: int,
-                sampling_rate: int=22050,
-                n_fft: int=2000,
-                hop_length=100,
-                window_size: int=9,
-                stride: int=1,
-                padding_value: float=-80,
-                random_seed: int=0):
+class SignalSpectrogramTokenizer(ImageTokenizer):
+    def __init__(self,
+                 num_embeddings: int,
+                 sampling_rate: int=22050,
+                 n_fft: int=2000,
+                 hop_length: int=100,
+                 padding_idx: int=0,
+                 window_height: int=9,
+                 window_width: int=9,
+                 stride: int=1,
+                 padding_value: float=-80,
+                 shorten_threshold: float=1e-3,
+                 shorten_offset: int=500,
+                 random_seed: int=0):
 
-        super().__init__(num_embeddings, window_size, stride, padding_value, random_seed)
+        super().__init__(num_embeddings, padding_idx, window_height, window_width, stride, padding_value, random_seed)
         self.sampling_rate = sampling_rate
         self.n_fft = n_fft
         self.hop_length = hop_length
-
-        np.random.seed(random_seed)
-        self.random_vecs = np.random.normal(size=[math.ceil(math.log(num_embeddings, 2)), window_size * window_size])
-
-    def shorten_signal(signal, threshold=1e-3, offset=500):
-        start_id = 0
-        for i in np.arange(signal.shape[0]):
-            value = signal[i]
-            if abs(value) > threshold:
-                start_id = i
-                break
-
-        end_id = math.inf
-        for i in np.arange(signal.shape[0])[::-1]:
-            value = signal[i]
-            if abs(value) > threshold:
-                end_id = i
-                break
-                
-        signal = signal[start_id - offset:end_id + offset]
-        return signal
+        self.shorten_threshold = shorten_threshold
+        self.shorten_offset = shorten_offset
 
     def tokenizer(self, signal: np.ndarray):
         """
         signal: (signal_length, )
-        return: (output_length, window_size)
+        return: (output_height, output_width, window_height, window_width)
         """
-        signal = self.shorten_signal(signal)
-        signal_length = signal.shape[0]
-
-        # Calculate padding size
-        output_length = math.ceil((signal_length - self.window_size) / self.stride + 1)
-        padding_size = (output_length - 1) * self.stride - signal_length + self.window_size
-        # Padding
-        signal = np.pad(signal, (0, padding_size), "constant", constant_values=self.padding_value)
-        # Tokenize
-        tokens = np.concatenate([signal[np.newaxis, i * self.stride:i * self.stride + self.window_size] for i in range(output_length)], axis=0)
-        return tokens
+        # Convert signal into spectrogram image
+        signal = shorten_signal(signal, threshold=self.shorten_threshold, offset=self.shorten_offset)
+        spectrogram = librosa.feature.melspectrogram(y=signal, sr=self.sampling_rate, n_fft=self.n_fft, hop_length=self.hop_length)
+        spectrogram = librosa.power_to_db(spectrogram, ref=np.max)
+        return super().tokenizer(spectrogram)
 
 
 # class _BaseTokenizer:

@@ -1,3 +1,4 @@
+import math
 import hashlib
 import numpy as np
 
@@ -14,6 +15,25 @@ def word2ngram(word, n=3):
 def word2skipngram(word, n=2):
     skipgrams = ["".join([word[i+(j*2)] for j in range(n)]) for i in range(len(word) - 2 * n + 2)]
     return skipgrams
+
+
+def shorten_signal(signal, threshold=1e-3, offset=100):
+    start_id = 0
+    for i in np.arange(signal.shape[0]):
+        value = signal[i]
+        if abs(value) > threshold:
+            start_id = i
+            break
+
+    end_id = math.inf
+    for i in np.arange(signal.shape[0])[::-1]:
+        value = signal[i]
+        if abs(value) > threshold:
+            end_id = i
+            break
+            
+    signal = signal[start_id - offset:end_id + offset]
+    return signal
 
 
 class Word2Syllable:

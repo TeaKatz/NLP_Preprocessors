@@ -6,6 +6,7 @@ from .Tokenizer import RoughPositionalCharacterLevelWordTokenizer
 from .Tokenizer import PrecisePositionalCharacterLevelWordTokenizer
 from .Tokenizer import SignalTokenizer
 from .Tokenizer import SignalDerivativeTokenizer
+from .Tokenizer import SignalSpectrogramTokenizer
 from .Tokenizer import ImageTokenizer
 
 from .TokenIdPadding import TokenIdPadding
