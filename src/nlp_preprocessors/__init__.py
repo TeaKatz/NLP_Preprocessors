@@ -1,4 +1,3 @@
-from .Tokenizer import WordTokenizer
 from .Tokenizer import NgramLevelWordTokenizer
 from .Tokenizer import LshNgramLevelWordTokenizer
 from .Tokenizer import CharacterLevelWordTokenizer
@@ -8,6 +7,7 @@ from .Tokenizer import SignalTokenizer
 from .Tokenizer import SignalDerivativeTokenizer
 from .Tokenizer import SignalSpectrogramTokenizer
 from .Tokenizer import ImageTokenizer
+from .Tokenizer import WordTokenizer
 
 from .TokenIdPadding import TokenIdPadding
 from .TokenIdPadding import CharacterLevelWordTokenizerPadding

@@ -1,12 +1,14 @@
+import os
 import math
+import joblib
 import hashlib
 import librosa
 
 import numpy as np
 
+from tqdm import tqdm
 from abc import abstractmethod
 from nltk import word_tokenize
-from numpy.core.defchararray import array
 
 from .utilities import Word2Syllable
 from .utilities import word2ngram
@@ -72,12 +74,6 @@ class LocalitySensitiveHashingBasedTokenizer(TextTokenizer):
         hash_number = self.lsh(token) % self.num_embeddings
         hash_number = max(hash_number, self.padding_idx + len(self.special_tokens))
         return hash_number
-
-
-class WordTokenizer(HashingBasedTokenizer):
-    def tokenize(self, string: str):
-        """ Convert a given string into a sequence of tokens """
-        return word_tokenize(string) if not self.input_word else [string]
 
 
 class NgramLevelWordTokenizer(HashingBasedTokenizer):
@@ -384,139 +380,62 @@ class SignalSpectrogramTokenizer(ImageTokenizer):
         return super().tokenize(spectrogram)
 
 
-# class _BaseTokenizer:
-#     def __init__(self, 
-#                 max_vocabs: int=None,
-#                 min_freq: int=None,
-#                 pad_to_length: Union[None, str, int]=None,
-#                 truncate: bool=False,
-#                 pad_token_id: int=0,
-#                 cls_token_id: int=1,
-#                 sep_token_id: int=2,
-#                 mask_token_id: int=3,
-#                 return_padding_mask: bool=False):
+class CorpusBasedTokenizer(TextTokenizer):
+    def __init__(self,
+                 local_dir: str="corpus_based_tokenizer",
+                 num_embeddings: int=None, 
+                 padding_idx: int=0,
+                 input_word: bool=False):
 
-#         self.max_vocabs = max_vocabs
-#         self.min_freq = min_freq
-#         self.padding = TokenPadding(pad_to_length, truncate, pad_token_id, return_padding_mask)
-#         self.pad_token_id = pad_token_id
-#         self.cls_token_id = cls_token_id
-#         self.sep_token_id = sep_token_id
-#         self.mask_token_id = mask_token_id
-#         self.vocabs = []
-#         self.vocab2id = {}
-#         self.id2vocab = {}
+        super().__init__(num_embeddings, padding_idx, input_word)
+        self.local_dir = local_dir
+        self.token2id = None
+        self.load()
 
-#     def __call__(self, texts: List[str], start_token=False, end_token=False) -> Dict:
-#         token_ids = np.asarray([self.text2ids(text, start_token=start_token, end_token=end_token) for text in texts])
-#         return self.padding(token_ids)
+    def numerize(self, token: str):
+        """ Convert a given token into a number """
+        assert self.token2id is not None, "Please fit corpus first"
 
-#     @abstractmethod
-#     def tokenize(self, text):
-#         pass
+        number = self.token2id.get(token, self.token2id["<UNK>"])
+        return number
 
-#     def text2ids(self, text, start_token=False, end_token=False):
-#         tokens = self.text2tokens(text, start_token=start_token, end_token=end_token)
+    def save(self):
+        if os.path.exists(self.local_dir):
+            os.mkdir(self.local_dir)
 
-#         token_ids = [self.vocab2id.get(token, self.unk_token_id) for token in tokens]
-#         return token_ids
+        joblib.dump(self.token2id, self.local_dir + "/token2id.pkl")
 
-#     def text2tokens(self, text, start_token=False, end_token=False):
-#         tokens = self.tokenizer(text)
-#         if start_token:
-#             tokens = [self.cls_token] + tokens
-#         if end_token:
-#             tokens = tokens + [self.sep_token]
-#         return tokens
+    def load(self):
+        if os.path.exists(self.local_dir + "/token2id.pkl"):
+            self.token2id = joblib.load(self.local_dir + "/token2id.pkl")
 
-#     def ids2text(self, ids, remove_special_token=True):
-#         tokens = self.ids2tokens(ids, remove_special_token=remove_special_token)
-#         text = "".join(tokens)
-#         return text
+    def fit(self, corpus: list[str]):
+        tokens_freq = {}
+        for string in tqdm(corpus):
+            tokens = self.tokenize(string)
+            for token in tokens:
+                tokens_freq[token] = tokens_freq.get(token, 0) + 1
 
-#     def ids2tokens(self, ids, remove_special_token=True):
-#         tokens = []
-#         for i in ids:
-#             if remove_special_token and i in [self.pad_token_id, self.cls_token_id, self.sep_token_id, self.mask_token_id, self.unk_token_id]:
-#                 continue
-#             tokens.append(self.id2vocab[i])
-#         return tokens
+        tokens_freq = sorted(tokens_freq.items(), key=lambda x: x[1], reverse=True)
+        if self.num_embeddings is not None:
+            tokens_freq = tokens_freq[:self.num_embeddings - len(self.special_tokens)]
 
-#     def save(self, save_dir):
-#         with open(save_dir, "w") as f:
-#             [f.write(vocab + "\n") for vocab in self.vocabs]
+        tokens = self.special_tokens + [token for token, _ in tokens_freq]
 
-#     def load(self, load_dir):
-#         with open(load_dir, "r") as f:
-#             self.vocabs = f.read()[:-1].split("\n")
-#             # Get vocab2id and id2vocab
-#             self.vocab2id[self.pad_token] = self.pad_token_id
-#             self.vocab2id[self.cls_token] = self.cls_token_id
-#             self.vocab2id[self.sep_token] = self.sep_token_id
-#             self.vocab2id[self.mask_token] = self.mask_token_id
+        self.token2id = {token: i for i, token in enumerate(tokens)}
 
-#             self.vocab2id.update({token: i + len(self.vocab2id) for i, token in enumerate(self.vocabs)})
+        self.save()
 
-#             self.vocab2id[self.unk_token] = self.unk_token_id
-#             self.id2vocab = {i: token for token, i in self.vocab2id.items()}
 
-#     def fit(self, corpus: List, initial_vocabs: List=None):
-#         # Get tokens frequency
-#         token_freq = {}
-#         for text in tqdm(corpus):
-#             tokens = self.tokenizer(text)
-#             for token in tokens:
-#                 token_freq[token] = token_freq.get(token, 0) + 1
+class WordTokenizer(CorpusBasedTokenizer):
+    def __init__(self,
+                 local_dir: str="word_tokenizer",
+                 num_embeddings: int=None, 
+                 padding_idx: int=0,
+                 input_word: bool=False):
 
-#         # Get vocabs
-#         if self.max_vocabs is not None and self.min_freq is not None:
-#             sorted_token_freq = sorted(token_freq.items(), key=lambda x: x[1], reverse=True)
-#             self.vocabs = [token for token, freq in sorted_token_freq[:self.max_vocabs] if freq >= self.min_freq]
-#         elif self.max_vocabs is not None:
-#             sorted_token_freq = sorted(token_freq.items(), key=lambda x: x[1], reverse=True)
-#             self.vocabs = [token for token, _ in sorted_token_freq[:self.max_vocabs]]
-#         elif self.min_freq is not None:
-#             self.vocabs = [token for token, freq in token_freq.items() if freq >= self.min_freq]
-#         else:
-#             self.vocabs = list(token_freq.keys())
+        super().__init__(local_dir, num_embeddings, padding_idx, input_word)
 
-#         # Get vocab2id and id2vocab
-#         self.vocab2id[self.pad_token] = self.pad_token_id
-#         self.vocab2id[self.cls_token] = self.cls_token_id
-#         self.vocab2id[self.sep_token] = self.sep_token_id
-#         self.vocab2id[self.mask_token] = self.mask_token_id
-
-#         if initial_vocabs is not None:
-#             self.vocabs = initial_vocabs + self.vocabs
-#         self.vocab2id.update({token: i + len(self.vocab2id) for i, token in enumerate(self.vocabs)})
-
-#         self.vocab2id[self.unk_token] = self.unk_token_id
-#         self.id2vocab = {i: token for token, i in self.vocab2id.items()}
-
-#     @property
-#     def vocab_size(self):
-#         return len(self.vocab2id)
-
-#     @property
-#     def pad_token(self):
-#         return "<PAD>"
-
-#     @property
-#     def cls_token(self):
-#         return "<CLS>"
-
-#     @property
-#     def sep_token(self):
-#         return "<SEP>"
-
-#     @property
-#     def mask_token(self):
-#         return "<MASK>"
-
-#     @property
-#     def unk_token(self):
-#         return "<UNK>"
-
-#     @property
-#     def unk_token_id(self):
-#         return len(self.vocabs) + 4
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
+        return word_tokenize(string) if not self.input_word else [string]
