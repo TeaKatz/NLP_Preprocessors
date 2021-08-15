@@ -69,6 +69,10 @@ class TokenIdPadding:
             returns["true_lengths"] = true_lengths
         return returns
 
+
+class WordTokenizerPadding(TokenIdPadding):
+    pass
+
                 
 class CharacterLevelWordTokenizerPadding(TokenIdPadding):
     def __init__(self,

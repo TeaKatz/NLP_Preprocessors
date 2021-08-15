@@ -10,6 +10,7 @@ from .Tokenizer import ImageTokenizer
 from .Tokenizer import WordTokenizer
 
 from .TokenIdPadding import TokenIdPadding
+from .TokenIdPadding import WordTokenizerPadding
 from .TokenIdPadding import CharacterLevelWordTokenizerPadding
 from .TokenIdPadding import PositionalCharacterLevelWordTokenizerPadding
 from .TokenIdPadding import NgramLevelWordTokenizerPadding
