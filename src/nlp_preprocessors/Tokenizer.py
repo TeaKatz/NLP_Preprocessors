@@ -419,6 +419,8 @@ class CorpusBasedTokenizer(TextTokenizer):
         tokens_freq = sorted(tokens_freq.items(), key=lambda x: x[1], reverse=True)
         if self.num_embeddings is not None:
             tokens_freq = tokens_freq[:self.num_embeddings - len(self.special_tokens)]
+        else:
+            self.num_embeddings = len(tokens_freq) + len(self.special_tokens)
 
         tokens = self.special_tokens + [token for token, _ in tokens_freq]
 
