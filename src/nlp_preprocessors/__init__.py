@@ -15,6 +15,8 @@ from .TokenIdPadding import CharacterLevelWordTokenizerPadding
 from .TokenIdPadding import PositionalCharacterLevelWordTokenizerPadding
 from .TokenIdPadding import NgramLevelWordTokenizerPadding
 
+from .ImagePadding import ImagePadding
+
 from .SignalPadding import SignalPadding
 
 from .Preprocessor import SequentialPreprocessor
