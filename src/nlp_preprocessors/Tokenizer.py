@@ -400,7 +400,7 @@ class CorpusBasedTokenizer(TextTokenizer):
         return number
 
     def save(self):
-        if os.path.exists(self.local_dir):
+        if not os.path.exists(self.local_dir):
             os.mkdir(self.local_dir)
 
         joblib.dump(self.token2id, self.local_dir + "/token2id.pkl")
