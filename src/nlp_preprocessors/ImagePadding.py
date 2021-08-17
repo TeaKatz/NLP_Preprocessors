@@ -22,20 +22,20 @@ class ImagePadding:
         self.return_padding_mask = return_padding_mask
         self.return_true_length = return_true_length
 
-    def _get_padding_height(self, images):
+    def _get_padding_height(self, inputs):
         if self.padding_height == "static_longest":
-            self.padding_height = padding_height = max(image.shape[0] for image in images)
+            self.padding_height = padding_height = max(image.shape[0] for image in inputs)
         elif self.padding_height == "longest":
-            padding_height = max(image.shape[0] for image in images)
+            padding_height = max(image.shape[0] for image in inputs)
         else:
             padding_height = self.padding_height
         return padding_height
 
-    def _get_padding_width(self, images):
+    def _get_padding_width(self, inputs):
         if self.padding_width == "static_longest":
-            self.padding_width = padding_width = max(image.shape[1] for image in images)
+            self.padding_width = padding_width = max(image.shape[1] for image in inputs)
         elif self.padding_width == "longest":
-            padding_width = max(image.shape[1] for image in images)
+            padding_width = max(image.shape[1] for image in inputs)
         else:
             padding_width = self.padding_width
         return padding_width

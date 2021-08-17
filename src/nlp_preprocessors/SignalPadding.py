@@ -36,6 +36,7 @@ class SignalPadding:
         {
             signals:
             padding_masks (optional):
+            true_lengths (optional):
         }
         """
         batch_size = len(inputs)
