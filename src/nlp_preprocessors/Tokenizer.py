@@ -137,7 +137,7 @@ class LshNgramLevelWordTokenizer(LocalitySensitiveHashingBasedTokenizer):
         return [sub.numerize(gram) for gram in grams]
 
 
-class CharacterLevelWordTokenizer(HashingBasedTokenizer):
+class VocabFreeCharacterLevelWordTokenizer(HashingBasedTokenizer):
     def tokenize(self, string: str):
         """ Convert a given string into a sequence of tokens """
         words = word_tokenize(string) if not self.input_word else [string]
@@ -150,7 +150,7 @@ class CharacterLevelWordTokenizer(HashingBasedTokenizer):
         return [sub.numerize(char) for char in chars]
 
 
-class PositionalCharacterLevelWordTokenizer(HashingBasedTokenizer):
+class VocabFreePositionalCharacterLevelWordTokenizer(HashingBasedTokenizer):
     def __init__(self, 
                 num_embeddings: int,
                 padding_idx: int=0,
@@ -177,7 +177,7 @@ class PositionalCharacterLevelWordTokenizer(HashingBasedTokenizer):
         pass
 
 
-class RoughPositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordTokenizer):
+class VocabFreeRoughPositionalCharacterLevelWordTokenizer(VocabFreePositionalCharacterLevelWordTokenizer):
     language_options = ["en", "th"]
 
     def __init__(self, 
@@ -199,7 +199,7 @@ class RoughPositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordTok
         return chars, positions
 
 
-class PrecisePositionalCharacterLevelWordTokenizer(PositionalCharacterLevelWordTokenizer):
+class VocabFreePrecisePositionalCharacterLevelWordTokenizer(VocabFreePositionalCharacterLevelWordTokenizer):
     def positionize(self, chars: list[str]):
         positions = [min(i, self.max_positional - 1) for i in range(len(chars))]
         return chars, positions
@@ -441,3 +441,16 @@ class WordTokenizer(CorpusBasedTokenizer):
     def tokenize(self, string: str):
         """ Convert a given string into a sequence of tokens """
         return word_tokenize(string) if not self.input_word else [string]
+
+
+class CharacterLevelWordTokenizer(CorpusBasedTokenizer):
+    def tokenize(self, string: str):
+        """ Convert a given string into a sequence of tokens """
+        words = word_tokenize(string) if not self.input_word else [string]
+        tokens = [list(word) for word in words]
+        return tokens
+
+    def numerize(self, chars: list[str]):
+        """ Convert a given list of tokens into a list of numbers """
+        sub = super()
+        return [sub.numerize(char) for char in chars]
