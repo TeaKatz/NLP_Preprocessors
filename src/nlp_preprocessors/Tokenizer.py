@@ -411,10 +411,8 @@ class CorpusBasedTokenizer(TextTokenizer):
 
     def fit(self, corpus: list[str]):
         tokens_freq = {}
-        for string in tqdm(corpus):
-            tokens = self.tokenize(string)
-            for token in tokens:
-                tokens_freq[token] = tokens_freq.get(token, 0) + 1
+        for token in corpus:
+            tokens_freq[token] = tokens_freq.get(token, 0) + 1
 
         tokens_freq = sorted(tokens_freq.items(), key=lambda x: x[1], reverse=True)
         if self.num_embeddings is not None:
@@ -444,6 +442,14 @@ class WordTokenizer(CorpusBasedTokenizer):
 
 
 class CharacterLevelWordTokenizer(CorpusBasedTokenizer):
+    def __init__(self,
+                 local_dir: str="char_tokenizer",
+                 num_embeddings: int=None, 
+                 padding_idx: int=0,
+                 input_word: bool=False):
+
+        super().__init__(local_dir, num_embeddings, padding_idx, input_word)
+
     def tokenize(self, string: str):
         """ Convert a given string into a sequence of tokens """
         words = word_tokenize(string) if not self.input_word else [string]

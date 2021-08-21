@@ -109,11 +109,11 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
 
         Return dictionary of:
         {
-            token_ids:
-            padding_masks (optional):
-            char_padding_masks (optional):
-            true_lengths (optional):
-            true_char_lengths (optional):
+            token_ids: (batch_size, word_length, char_length)
+            padding_masks (optional): (batch_size, word_length)
+            char_padding_masks (optional): (batch_size, word_length, char_length)
+            true_lengths (optional): (batch_size, )
+            true_char_lengths (optional): (batch_size, word_length)
         }
         """
         batch_size = len(inputs)
