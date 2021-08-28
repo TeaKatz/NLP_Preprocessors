@@ -40,7 +40,7 @@ class ImagePadding:
             padding_width = self.padding_width
         return padding_width
 
-    def __call__(self, inputs: np.ndarray):
+    def __call__(self, inputs: list[np.ndarray]):
         """
         inputs: (batch_size, *height, *width)
         *Dimension to pad
@@ -69,7 +69,7 @@ class ImagePadding:
 
         # Padding
         for i in range(batch_size):
-            images[i, :inputs[i].shape[0], :inputs[i].shape[1]] = inputs[i, :padding_height, :padding_width]
+            images[i, :inputs[i].shape[0], :inputs[i].shape[1]] = inputs[i][:padding_height, :padding_width]
             if self.return_padding_mask:
                 padding_masks[i, :inputs[i].shape[0], :inputs[i].shape[1]] = 0.
             if self.return_true_length:
