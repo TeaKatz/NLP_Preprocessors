@@ -19,5 +19,7 @@ from .padding import VectorPadding
 from .padding import ImagePadding
 from .padding import SignalPadding
 
+from .attacker import EngCharacterAttacker
+
 from .Preprocessor import SequentialPreprocessor
 from .Preprocessor import ProcessShortcut
