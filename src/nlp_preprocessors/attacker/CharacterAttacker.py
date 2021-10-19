@@ -67,11 +67,12 @@ class EngCharacterAttacker:
     def __call__(self, sentence):
         words = sentence.split(" ")
 
+        valid_indices = [id for id in np.arange(len(words)) if len(words[id]) >= 3]
         if isinstance(self.words_num, int):
-            attack_num = min(self.words_num, len(words))
+            attack_num = min(self.words_num, len(valid_indices))
         else:
-            attack_num = math.ceil(len(words) * self.words_num)
-        attack_indices = np.random.choice(len(words), size=attack_num, replace=False)
+            attack_num = math.ceil(self.words_num * len(valid_indices))
+        attack_indices = np.random.choice(valid_indices, size=attack_num, replace=False)
         attack_methods = np.random.choice(["insert", "drop", "swap", "substitute"], size=attack_num, replace=True, p=[self.insert_p, self.drop_p, self.swap_p, self.substitute_p])
 
         for attack_id, attack_method in zip(attack_indices, attack_methods):
