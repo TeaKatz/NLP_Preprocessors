@@ -10,17 +10,14 @@ from .tokenizer import SignalSpectrogramTokenizer
 from .tokenizer import VectorTokenizer
 from .tokenizer import WordTokenizer
 
-from .TokenIdPadding import TokenIdPadding
-from .TokenIdPadding import WordTokenizerPadding
-from .TokenIdPadding import CharacterLevelWordTokenizerPadding
-from .TokenIdPadding import PositionalCharacterLevelWordTokenizerPadding
-from .TokenIdPadding import NgramLevelWordTokenizerPadding
-
-from .VectorPadding import VectorPadding
-
-from .ImagePadding import ImagePadding
-
-from .SignalPadding import SignalPadding
+from .padding import TokenIdPadding
+from .padding import WordTokenizerPadding
+from .padding import CharacterLevelWordTokenizerPadding
+from .padding import PositionalCharacterLevelWordTokenizerPadding
+from .padding import NgramLevelWordTokenizerPadding
+from .padding import VectorPadding
+from .padding import ImagePadding
+from .padding import SignalPadding
 
 from .Preprocessor import SequentialPreprocessor
 from .Preprocessor import ProcessShortcut
