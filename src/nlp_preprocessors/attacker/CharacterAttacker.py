@@ -65,6 +65,9 @@ class EngCharacterAttacker:
         return word
 
     def __call__(self, sentence):
+        if self.words_num is None:
+            return sentence
+            
         words = sentence.split(" ")
 
         valid_indices = [id for id in np.arange(len(words)) if len(words[id]) >= 3]
