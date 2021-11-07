@@ -8,6 +8,7 @@ class TokenIdPadding:
 
     def __init__(self,
                 padding_length: Union[str, int]="longest",
+                max_padding_length: int=None,
                 padding_idx: int=0,
                 return_padding_mask: bool=False,
                 return_true_length: bool=False):
@@ -17,6 +18,7 @@ class TokenIdPadding:
 
         self.padding_length = padding_length
         self.padding_idx = padding_idx
+        self.max_padding_length = max_padding_length
         self.return_padding_mask = return_padding_mask
         self.return_true_length = return_true_length
 
@@ -27,6 +29,9 @@ class TokenIdPadding:
             padding_length = max([len(items) for items in inputs])
         else:
             padding_length = self.padding_length
+
+        if self.max_padding_length is not None:
+            padding_length = min(padding_length, self.max_padding_length)
         return padding_length
 
     def __call__(self, inputs: list[list[int]]):
@@ -79,6 +84,8 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
     def __init__(self,
                 padding_length: Union[str, int]="longest",
                 char_padding_length: Union[str, int]="longest",
+                max_padding_length: int=None,
+                max_char_padding_length: int=None,
                 padding_idx: int=0,
                 return_padding_mask: bool=False,
                 return_char_padding_mask: bool=False,
@@ -88,8 +95,9 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
         if isinstance(char_padding_length, str):
             assert char_padding_length in self.padding_options
 
-        super().__init__(padding_length, padding_idx, return_padding_mask, return_true_length)
+        super().__init__(padding_length, max_padding_length, padding_idx, return_padding_mask, return_true_length)
         self.char_padding_length = char_padding_length
+        self.max_char_padding_length = max_char_padding_length
         self.return_char_padding_mask = return_char_padding_mask
         self.return_true_char_length = return_true_char_length
 
@@ -100,6 +108,9 @@ class CharacterLevelWordTokenizerPadding(TokenIdPadding):
             char_padding_length = max([max([len(word) for word in words]) for words in inputs])
         else:
             char_padding_length = self.char_padding_length
+
+        if self.max_char_padding_length is not None:
+            char_padding_length = min(char_padding_length, self.max_char_padding_length)
         return char_padding_length
 
     def __call__(self, inputs: list[list[list[int]]]):
@@ -167,6 +178,8 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
     def __init__(self,
                 padding_length: Union[str, int]="longest",
                 char_padding_length: Union[str, int]="longest",
+                max_padding_length: int=None,
+                max_char_padding_length: int=None,
                 padding_idx: int=0,
                 return_padding_mask: bool=False,
                 return_char_padding_mask: bool=False,
@@ -176,8 +189,9 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
         if isinstance(char_padding_length, str):
             assert char_padding_length in self.padding_options
 
-        super().__init__(padding_length, padding_idx, return_padding_mask, return_true_length)
+        super().__init__(padding_length, max_padding_length, padding_idx, return_padding_mask, return_true_length)
         self.char_padding_length = char_padding_length
+        self.max_char_padding_length = max_char_padding_length
         self.return_char_padding_mask = return_char_padding_mask
         self.return_true_char_length = return_true_char_length
 
@@ -188,6 +202,9 @@ class PositionalCharacterLevelWordTokenizerPadding(TokenIdPadding):
             char_padding_length = max([max([len(word[0]) for word in words]) for words in inputs])
         else:
             char_padding_length = self.char_padding_length
+
+        if self.max_char_padding_length is not None:
+            char_padding_length = min(char_padding_length, self.max_char_padding_length)
         return char_padding_length
 
     def __call__(self, inputs: list[list[list[int], list[int]]]):
