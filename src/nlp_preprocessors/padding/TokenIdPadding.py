@@ -1,7 +1,8 @@
-from logging import raiseExceptions
+import torch
 import numpy as np
 
-from typing import Union
+from logging import raiseExceptions
+from typing import Union, List
 
 
 class TokenIdPadding:
@@ -11,8 +12,6 @@ class TokenIdPadding:
                 padding_length: Union[str, int]="longest",
                 max_padding_length: int=None,
                 padding_id: int=0,
-                return_padding_masks: bool=False,
-                return_true_lengths: bool=False,
                 **kwargs):
 
         if isinstance(padding_length, str):
@@ -21,8 +20,6 @@ class TokenIdPadding:
         self.padding_length = padding_length
         self.padding_id = padding_id
         self.max_padding_length = max_padding_length
-        self.return_padding_masks = return_padding_masks
-        self.return_true_lengths = return_true_lengths
 
     def _get_padding_length(self, inputs):
         if self.padding_length == "static_longest":
@@ -36,7 +33,13 @@ class TokenIdPadding:
             padding_length = min(padding_length, self.max_padding_length)
         return padding_length
 
-    def __call__(self, inputs: list[list[int]]):
+    def __call__(self, 
+                inputs: List[List[int]], 
+                return_padding_masks: bool=False, 
+                return_true_lengths: bool=False, 
+                return_dict: bool=False, 
+                return_tensors: bool=False,
+                **kwargs):
         """
         inputs: (batch_size, *words_num)
         *Dimension to pad
@@ -56,26 +59,42 @@ class TokenIdPadding:
         # Initial
         returns = {}
         token_ids = np.full([batch_size, padding_length], self.padding_id, dtype=int)
-        if self.return_padding_masks:
-            padding_masks = np.ones([batch_size, padding_length], dtype=float)
-        if self.return_true_lengths:
+        if return_padding_masks:
+            padding_masks = np.zeros([batch_size, padding_length], dtype=int)
+        if return_true_lengths:
             true_lengths = np.zeros([batch_size], dtype=int)
 
         # Padding
         for i in range(batch_size):
             token_ids[i, :len(inputs[i])] = inputs[i][:padding_length]
-            if self.return_padding_masks:
-                padding_masks[i, :len(inputs[i])] = 0.
-            if self.return_true_lengths:
+            if return_padding_masks:
+                padding_masks[i, :len(inputs[i])] = 1
+            if return_true_lengths:
                 true_lengths[i] = min(len(inputs[i]), padding_length)
 
+        # Tensor
+        if return_tensors:
+            token_ids = torch.tensor(token_ids).long()
+            if return_padding_masks:
+                padding_masks = torch.tensor(padding_masks).long()
+            if return_true_lengths:
+                true_lengths = torch.tensor(true_lengths).long()
+
         # Return
-        returns["token_ids"] = token_ids
-        if self.return_padding_masks:
-            returns["padding_masks"] = padding_masks
-        if self.return_true_lengths:
-            returns["true_lengths"] = true_lengths
-        return returns
+        if return_dict:
+            returns["token_ids"] = token_ids
+            if return_padding_masks:
+                returns["padding_masks"] = padding_masks
+            if return_true_lengths:
+                returns["true_lengths"] = true_lengths
+            return returns
+        else:
+            returns = (token_ids, )
+            if return_padding_masks:
+                returns += (padding_masks, )
+            if return_true_lengths:
+                returns += (true_lengths, )
+            return returns[0] if len(returns) == 1 else returns
 
 
 class SubTokenIdPadding(TokenIdPadding):
@@ -85,25 +104,17 @@ class SubTokenIdPadding(TokenIdPadding):
                 max_padding_length: int=None,
                 max_sub_padding_length: int=None,
                 padding_id: int=0,
-                return_padding_masks: bool=False,
-                return_sub_padding_masks: bool=False,
-                return_true_lengths: bool=False,
-                return_true_sub_lengths: bool=False,
                 **kwargs):
 
         super().__init__(padding_length=padding_length,
                          max_padding_length=max_padding_length,
-                         padding_id=padding_id,
-                         return_padding_masks=return_padding_masks,
-                         return_true_lengths=return_true_lengths)
+                         padding_id=padding_id)
 
         if isinstance(sub_padding_length, str):
             assert sub_padding_length in self.padding_options
 
         self.sub_padding_length = sub_padding_length
         self.max_sub_padding_length=max_sub_padding_length
-        self.return_sub_padding_masks = return_sub_padding_masks
-        self.return_true_sub_lengths = return_true_sub_lengths
 
     def _get_sub_padding_length(self, inputs):
         if self.sub_padding_length == "static_longest":
@@ -117,7 +128,15 @@ class SubTokenIdPadding(TokenIdPadding):
             sub_padding_length = min(sub_padding_length, self.max_sub_padding_length)
         return sub_padding_length
 
-    def __call__(self, inputs: list[list[list[int]]]):
+    def __call__(self, 
+                inputs: List[List[List[int]]],
+                return_padding_masks: bool=False, 
+                return_sub_padding_masks: bool=False,
+                return_true_lengths: bool=False, 
+                return_true_sub_lengths: bool=False,
+                return_dict: bool=False, 
+                return_tensors: bool=False,
+                **kwargs):
         """
         inputs: (batch_size, *words_num, *subwords_num)
         *Dimension to pad
@@ -142,40 +161,64 @@ class SubTokenIdPadding(TokenIdPadding):
         # Initial
         returns = {}
         token_ids = np.full([batch_size, padding_length, sub_padding_length], self.padding_id, dtype=int)
-        if self.return_padding_masks:
-            padding_masks = np.ones([batch_size, padding_length], dtype=float)
-        if self.return_sub_padding_masks:
-            sub_padding_masks = np.ones([batch_size, padding_length, sub_padding_length], dtype=float)
-        if self.return_true_lengths:
+        if return_padding_masks:
+            padding_masks = np.zeros([batch_size, padding_length], dtype=int)
+        if return_sub_padding_masks:
+            sub_padding_masks = np.zeros([batch_size, padding_length, sub_padding_length], dtype=int)
+        if return_true_lengths:
             true_lengths = np.zeros([batch_size], dtype=int)
-        if self.return_true_sub_lengths:
+        if return_true_sub_lengths:
             true_sub_lengths = np.zeros([batch_size, padding_length], dtype=int)
 
         # Padding
         for i in range(batch_size):
-            if self.return_padding_masks:
-                padding_masks[i, :len(inputs[i])] = 0.
-            if self.return_true_lengths:
+            if return_padding_masks:
+                padding_masks[i, :len(inputs[i])] = 1
+            if return_true_lengths:
                 true_lengths[i] = min(len(inputs[i]), padding_length)
 
             for j in range(min(len(inputs[i]), padding_length)):
                 token_ids[i, j, :len(inputs[i][j])] = inputs[i][j][:sub_padding_length]
-                if self.return_sub_padding_masks:
-                    sub_padding_masks[i, j, :len(inputs[i][j])] = 0.
-                if self.return_true_sub_lengths:
+                if return_sub_padding_masks:
+                    sub_padding_masks[i, j, :len(inputs[i][j])] = 1
+                if return_true_sub_lengths:
                     true_sub_lengths[i, j] = min(len(inputs[i][j]), sub_padding_length)
 
+        # Tensor
+        if return_tensors:
+            token_ids = torch.tensor(token_ids).long()
+            if return_padding_masks:
+                padding_masks = torch.tensor(padding_masks).long()
+            if return_sub_padding_masks:
+                sub_padding_masks = torch.tensor(sub_padding_masks).long()
+            if return_true_lengths:
+                true_lengths = torch.tensor(true_lengths).long()
+            if return_true_sub_lengths:
+                true_sub_lengths = torch.tensor(true_sub_lengths).long()
+
         # Return
-        returns["token_ids"] = token_ids
-        if self.return_padding_masks:
-            returns["padding_masks"] = padding_masks
-        if self.return_sub_padding_masks:
-            returns["sub_padding_masks"] = sub_padding_masks
-        if self.return_true_lengths:
-            returns["true_lengths"] = true_lengths
-        if self.return_true_sub_lengths:
-            returns["true_sub_lengths"] = true_sub_lengths
-        return returns
+        if return_dict:
+            returns["token_ids"] = token_ids
+            if return_padding_masks:
+                returns["padding_masks"] = padding_masks
+            if return_sub_padding_masks:
+                returns["sub_padding_masks"] = sub_padding_masks
+            if return_true_lengths:
+                returns["true_lengths"] = true_lengths
+            if return_true_sub_lengths:
+                returns["true_sub_lengths"] = true_sub_lengths
+            return returns
+        else:
+            returns = (token_ids, )
+            if return_padding_masks:
+                returns += (padding_masks, )
+            if return_sub_padding_masks:
+                returns += (sub_padding_masks, )
+            if return_true_lengths:
+                returns += (true_lengths, )
+            if return_true_sub_lengths:
+                returns += (true_sub_lengths, )
+            return returns[0] if len(returns) == 1 else returns
 
 
 class AutoTokenIdPadding:
@@ -183,11 +226,11 @@ class AutoTokenIdPadding:
         self.token_id_padding = TokenIdPadding(*args, **kwargs)
         self.subtoken_id_padding = SubTokenIdPadding(*args, **kwargs)
 
-    def __call__(self, inputs):
+    def __call__(self, inputs: List, **kwargs):
         if isinstance(inputs[0][0], int):
-            return self.token_id_padding(inputs)
+            return self.token_id_padding(inputs, **kwargs)
         elif isinstance(inputs[0][0][0], int):
-            return self.subtoken_id_padding(inputs)
+            return self.subtoken_id_padding(inputs, **kwargs)
         else:
             raiseExceptions("inputs format doesn't match")
 
