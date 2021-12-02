@@ -7,6 +7,7 @@ from typing import Union, List
 
 class TokenIdPadding:
     padding_options = ["longest", "static_longest"]
+    tensor_options = ["pt"]
 
     def __init__(self,
                 padding_length: Union[str, int]="longest",
@@ -38,7 +39,7 @@ class TokenIdPadding:
                 return_padding_masks: bool=False, 
                 return_true_lengths: bool=False, 
                 return_dict: bool=False, 
-                return_tensors: bool=False,
+                return_tensors: Union[str, bool]=False,
                 **kwargs):
         """
         inputs: (batch_size, *words_num)
@@ -73,7 +74,7 @@ class TokenIdPadding:
                 true_lengths[i] = min(len(inputs[i]), padding_length)
 
         # Tensor
-        if return_tensors:
+        if return_tensors == "pt":
             token_ids = torch.tensor(token_ids).long()
             if return_padding_masks:
                 padding_masks = torch.tensor(padding_masks).long()
@@ -135,7 +136,7 @@ class SubTokenIdPadding(TokenIdPadding):
                 return_true_lengths: bool=False, 
                 return_true_sub_lengths: bool=False,
                 return_dict: bool=False, 
-                return_tensors: bool=False,
+                return_tensors: Union[str, bool]=False,
                 **kwargs):
         """
         inputs: (batch_size, *words_num, *subwords_num)
@@ -185,7 +186,7 @@ class SubTokenIdPadding(TokenIdPadding):
                     true_sub_lengths[i, j] = min(len(inputs[i][j]), sub_padding_length)
 
         # Tensor
-        if return_tensors:
+        if return_tensors == "pt":
             token_ids = torch.tensor(token_ids).long()
             if return_padding_masks:
                 padding_masks = torch.tensor(padding_masks).long()
@@ -227,7 +228,10 @@ class AutoTokenIdPadding:
         self.subtoken_id_padding = SubTokenIdPadding(*args, **kwargs)
 
     def __call__(self, inputs: List, **kwargs):
-        if isinstance(inputs[0][0], int):
+        if isinstance(inputs[0], int):
+            # Inputs cannot be padded
+            return inputs   
+        elif isinstance(inputs[0][0], int):
             return self.token_id_padding(inputs, **kwargs)
         elif isinstance(inputs[0][0][0], int):
             return self.subtoken_id_padding(inputs, **kwargs)

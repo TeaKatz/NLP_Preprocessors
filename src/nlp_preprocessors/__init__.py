@@ -1,5 +1,6 @@
 from .tokenizer import BaseTokenizer
-from .tokenizer import ModifiedBertTokenizer
+from .tokenizer import SubwordBertTokenizer
+from .tokenizer import FullwordBertTokenizer
 from .tokenizer import VocabFreeCharacterLevelWordTokenizer
 from .tokenizer import CharacterLevelWordTokenizer
 from .tokenizer import ImageTokenizer
