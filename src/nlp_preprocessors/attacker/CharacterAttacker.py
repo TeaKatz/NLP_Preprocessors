@@ -3,11 +3,18 @@ import numpy as np
 
 
 class EngCharacterAttacker:
-    eng_characters = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", 
-                      "a", "s", "d", "f", "g", "h", "j", "k", "l", "z",
-                      "x", "c", "v", "b", "n", "m"]
+    eng_characters = [
+        "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", 
+        "a", "s", "d", "f", "g", "h", "j", "k", "l", "z",
+        "x", "c", "v", "b", "n", "m"
+    ]
+    nearby_characters = {
+        "q": "was", "w": "qeasd", "e": "wrsdf", "r": "etdfg", "t": "ryfgh", "y": "tughj", "u": "yihjk", "i": "uojkl", "o": "ipkl", "p": "ol",
+        "a": "qwszx", "s": "qweadzxc", "d": "wersfxcv", "f": "ertdgcvb", "g": "rtyfhvbn", "h": "tyugjbnm", "j": "yuihknm", "k": "uiojlm", "l": "iopk", 
+        "z": "asx", "x": "assdzc", "c": "sdfxv", "v": "dfgcb", "b": "fghvn", "n": "ghjbm", "m": "hjkn"
+    }
 
-    def __init__(self, words_num=0.1, insert_p=0.25, drop_p=0.25, swap_p=0.25, substitute_p=0.25):
+    def __init__(self, words_num=0.1, insert_p=0.25, drop_p=0.25, swap_p=0.25, substitute_p=0.25, keyboard_constrain=False):
         """
         words_num: Number (integer) or percentage (float) of words to attack in the given sentence
         insert_p: Probability (float) of attacking by inserting
@@ -20,12 +27,17 @@ class EngCharacterAttacker:
         self.drop_p = drop_p
         self.swap_p = swap_p
         self.substitute_p = substitute_p
+        self.keyboard_constrain = keyboard_constrain
 
     def insert(self, word):
         word = list(word)
 
         insert_id = np.random.choice(len(word), size=1)[0]
-        insert_char = np.random.choice(self.eng_characters, size=1)[0]
+        if self.keyboard_constrain:
+            target_char = word[insert_id]
+            insert_char = np.random.choice(list(self.nearby_characters[target_char]), size=1)[0]
+        else:
+            insert_char = np.random.choice(self.eng_characters, size=1)[0]
 
         word.insert(insert_id, insert_char)
         word = "".join(word)
@@ -57,7 +69,11 @@ class EngCharacterAttacker:
         word = list(word)
 
         substitute_id = np.random.choice(len(word) - 1, size=1)[0]
-        substitute_char = np.random.choice(self.eng_characters, size=1)[0]
+        if self.keyboard_constrain:
+            target_char = word[substitute_id]
+            substitute_char = np.random.choice(list(self.nearby_characters[target_char]), size=1)[0]
+        else:
+            substitute_char = np.random.choice(self.eng_characters, size=1)[0]
 
         word[substitute_id] = substitute_char
         word = "".join(word)
