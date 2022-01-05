@@ -1,15 +1,16 @@
-from transformers import AutoTokenizer
+import torch
+from ..tokenizer.BertTokenizer import SubwordBertTokenizer
 
 
 class BasePreprocessor:
     def __init__(self, sent_num=1, test_set=False, padding_length="longest", max_padding_length=100):
-        assert sent_num not in [1, 2]
+        assert sent_num in [1, 2]
 
         self.sent_num = sent_num
         self.test_set = test_set
         self.padding_length = padding_length
         self.max_padding_length = max_padding_length
-        self.tokenizer = AutoTokenizer.from_pretrained("princeton-nlp/sup-simcse-bert-base-uncased")
+        self.tokenizer = SubwordBertTokenizer.from_pretrained("princeton-nlp/sup-simcse-bert-base-uncased")
 
     def process_sample(self, sample):
         if self.sent_num == 1:
@@ -38,6 +39,7 @@ class BasePreprocessor:
             sents.extend(sent)
             labels.append(label)
         features = self.tokenizer(sents, padding=True, padding_length=self.padding_length, max_padding_length=self.max_padding_length, return_tensors="pt")
+        labels = torch.tensor(labels)
         # Unflatten
         if self.sent_num == 1:
             features = {key: item.view(batch_size, 1, -1) for key, item in features.items()}
