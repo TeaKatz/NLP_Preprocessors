@@ -35,7 +35,10 @@ class EngCharacterAttacker:
         insert_id = np.random.choice(len(word), size=1)[0]
         if self.keyboard_constrain:
             target_char = word[insert_id]
-            insert_char = np.random.choice(list(self.nearby_characters[target_char]), size=1)[0]
+            if target_char in self.nearby_characters:
+                insert_char = np.random.choice(list(self.nearby_characters[target_char]), size=1)[0]
+            else:
+                insert_char = target_char
         else:
             insert_char = np.random.choice(self.eng_characters, size=1)[0]
 
@@ -71,7 +74,10 @@ class EngCharacterAttacker:
         substitute_id = np.random.choice(len(word) - 1, size=1)[0]
         if self.keyboard_constrain:
             target_char = word[substitute_id]
-            substitute_char = np.random.choice(list(self.nearby_characters[target_char]), size=1)[0]
+            if target_char in self.nearby_characters:
+                substitute_char = np.random.choice(list(self.nearby_characters[target_char]), size=1)[0]
+            else:
+                substitute_char = target_char
         else:
             substitute_char = np.random.choice(self.eng_characters, size=1)[0]
 
