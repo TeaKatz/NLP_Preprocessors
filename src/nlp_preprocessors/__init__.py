@@ -23,7 +23,9 @@ from .padding import VectorPadding
 from .padding import ImagePadding
 # from .padding import SignalPadding
 
-from .attacker import EngCharacterAttacker
+from .attacker import RandomCharacterAttacker
+from .attacker import UnsupervisedAdversarialCharacterAttacker
+from .attacker import SupervisedAdversarialCharacterAttacker
 
 from .Preprocessor import SequentialPreprocessor
 from .Preprocessor import ProcessShortcut

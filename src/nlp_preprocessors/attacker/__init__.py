@@ -1,1 +1,3 @@
-from .CharacterAttacker import EngCharacterAttacker
+from .CharacterAttacker import RandomCharacterAttacker
+from .CharacterAttacker import UnsupervisedAdversarialCharacterAttacker
+from .CharacterAttacker import SupervisedAdversarialCharacterAttacker
