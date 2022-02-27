@@ -26,6 +26,7 @@ from .padding import ImagePadding
 from .attacker import RandomCharacterAttacker
 from .attacker import UnsupervisedAdversarialCharacterAttacker
 from .attacker import SupervisedAdversarialCharacterAttacker
+from .attacker import RandomWordAttacker
 
 from .Preprocessor import SequentialPreprocessor
 from .Preprocessor import ProcessShortcut
