@@ -1,8 +1,8 @@
 import math
 import torch
 import numpy as np
+from tqdm import tqdm
 from abc import abstractmethod
-from torch.nn import CosineSimilarity
 
 
 eng_characters = [
@@ -12,13 +12,25 @@ eng_characters = [
 ]
 nearby_characters = {
     "q": "was", "w": "qeasd", "e": "wrsdf", "r": "etdfg", "t": "ryfgh", "y": "tughj", "u": "yihjk", "i": "uojkl", "o": "ipkl", "p": "ol",
-    "a": "qwszx", "s": "qweadzxc", "d": "wersfxcv", "f": "ertdgcvb", "g": "rtyfhvbn", "h": "tyugjbnm", "j": "yuihknm", "k": "uiojlm", "l": "iopk", 
-    "z": "asx", "x": "assdzc", "c": "sdfxv", "v": "dfgcb", "b": "fghvn", "n": "ghjbm", "m": "hjkn"
+    "a": "qwszx", "s": "qweadzxc", "d": "wersfzxcv", "f": "ertdgxcvb", "g": "rtyfhcvbn", "h": "tyugjvbnm", "j": "yuihkbnm", "k": "uiojlnm", "l": "iopkm", 
+    "z": "asdx", "x": "sdfzc", "c": "dfgxv", "v": "fghcb", "b": "ghjvn", "n": "hjkbm", "m": "jkln"
 }
 
 
-def word_validation(word):
-    return len(word) >= 3 and len([char for char in word if char in eng_characters]) > 0
+def word_validation(word, min_word_len=3):
+    return len(word) >= min_word_len and len([char for char in word if char in eng_characters]) > 0
+
+def sentence2words(sentence):
+    return sentence.split(" ")
+
+def words2sentence(words):
+    return " ".join(words)
+
+def word2chars(word):
+    return list(word)
+
+def chars2word(chars):
+    return "".join(chars)
 
 
 class BaseCharacterAttacker:
@@ -26,8 +38,8 @@ class BaseCharacterAttacker:
         self.keyboard_constrain = keyboard_constrain
 
     @staticmethod
-    def get_word_id(tokens):
-        valid_indices = [id for id in np.arange(len(tokens)) if word_validation(tokens[id])]
+    def get_word_id(tokens, min_word_len=3):
+        valid_indices = [id for id in np.arange(len(tokens)) if word_validation(tokens[id], min_word_len)]
         if len(valid_indices) == 0:
             return None
         word_id = np.random.choice(valid_indices, size=1, replace=False)[0]
@@ -45,13 +57,13 @@ class BaseCharacterAttacker:
     def get_pert_words(self, word, char_id, return_all_possible=False):
         pass
 
-    def __call__(self, sentence=None, tokens=None, word_id=None, char_id=None, return_all_possible=False, return_tokens=False):
+    def __call__(self, sentence=None, tokens=None, word_id=None, char_id=None, min_word_len=3, return_all_possible=False, return_tokens=False):
         # Get tokens
         if tokens is None:
             tokens = sentence.split(" ")
         # Get word_id
         if word_id is None:
-            word_id = self.get_word_id(tokens)
+            word_id = self.get_word_id(tokens, min_word_len)
             if word_id is None:
                 if return_tokens:
                     return tokens
@@ -83,6 +95,10 @@ class BaseCharacterAttacker:
 
 class InsertCharacterAttacker(BaseCharacterAttacker):
     def get_pert_words(self, word, char_id, return_all_possible=False):
+        if isinstance(word, str):
+            word = list(word)
+        word = word.copy()
+
         if self.keyboard_constrain:
             target_char = word[char_id]
             if target_char in nearby_characters:
@@ -109,7 +125,19 @@ class InsertCharacterAttacker(BaseCharacterAttacker):
 
 
 class DropCharacterAttacker(BaseCharacterAttacker):
+    @staticmethod
+    def get_char_id(word):
+        if len(word) == 0:
+            return None
+
     def get_pert_words(self, word, char_id, return_all_possible=False):
+        if isinstance(word, str):
+            word = list(word)
+        word = word.copy()
+
+        if len(word) == 0:
+            return ["".join(word)]
+
         del word[char_id]
         pert_words = ["".join(word)]
         return pert_words
@@ -118,6 +146,8 @@ class DropCharacterAttacker(BaseCharacterAttacker):
 class SwapCharacterAttacker(BaseCharacterAttacker):
     @staticmethod
     def get_char_id(word):
+        if len(word) == 0:
+            return None
         valid_indices = [id for id, char in enumerate(word) if char in eng_characters]
         if len(word) - 1 in valid_indices:
             valid_indices.remove(len(word) - 1)
@@ -127,6 +157,13 @@ class SwapCharacterAttacker(BaseCharacterAttacker):
         return char_id
 
     def get_pert_words(self, word, char_id, return_all_possible=False):
+        if isinstance(word, str):
+            word = list(word)
+        word = word.copy()
+
+        if char_id >= len(word) - 1:
+            return ["".join(word)]
+
         char1, char2 = word[char_id], word[char_id + 1]
         word[char_id], word[char_id + 1] = char2, char1
         pert_words = ["".join(word)]
@@ -135,6 +172,10 @@ class SwapCharacterAttacker(BaseCharacterAttacker):
 
 class SubstituteCharacterAttacker(BaseCharacterAttacker):
     def get_pert_words(self, word, char_id, return_all_possible=False):
+        if isinstance(word, str):
+            word = list(word)
+        word = word.copy()
+
         if self.keyboard_constrain:
             target_char = word[char_id]
             if target_char in nearby_characters:
@@ -171,11 +212,29 @@ class RandomCharacterAttacker:
         self.swap_attacker = SwapCharacterAttacker(keyboard_constrain)
         self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain)
 
-    def __call__(self, sentence=None, tokens=None, perturb_num=1, word_indices=None, attack_methods=None, char_indices=None, return_tokens=False):
+    def _augment(self,
+            sentence=None, 
+            tokens=None, 
+            perturb_num=1, 
+            min_char_perturb_num=1,
+            max_char_perturb_num=1,
+            min_word_len=3,
+            word_indices=None, 
+            attack_methods=None, 
+            char_indices=None, 
+            return_tokens=False
+        ):
+        """
+        word_indices: a list of [word_id, ...]
+        attack_methods: a list of [attack_method, ...] or [[attack_method, ...], ...]
+        char_indices: a list of [char_id, ...] or [[char_id, ...], ...]
+        """
         if sentence is not None:
             assert isinstance(sentence, str)
         if tokens is not None:
             assert isinstance(tokens, list)
+        if sentence is not None and tokens is not None:
+            print("sentence and tokens arguments are provided, ignore sentence argument.")
         
         if perturb_num is None:
             if sentence is not None:
@@ -198,7 +257,7 @@ class RandomCharacterAttacker:
             tokens = sentence.split(" ")
         # Get word indices
         if word_indices is None:
-            valid_indices = [id for id in np.arange(len(tokens)) if word_validation(tokens[id])]
+            valid_indices = [id for id in np.arange(len(tokens)) if word_validation(tokens[id], min_word_len)]
             if len(valid_indices) == 0:
                 if return_tokens:
                     return tokens
@@ -209,216 +268,492 @@ class RandomCharacterAttacker:
             else:
                 perturb_num = math.ceil(perturb_num * len(valid_indices))
             word_indices = np.random.choice(valid_indices, size=perturb_num, replace=False)
-        # Get attacking methods
-        if attack_methods is None:
-            attack_methods = np.random.choice(["insert", "drop", "swap", "substitute"], size=len(word_indices), replace=True, p=[self.insert_p, self.drop_p, self.swap_p, self.substitute_p])
         # Get character indices
         if char_indices is None:
-            char_indices = [None] * len(word_indices)
+            # Determine number of character perturbations for each word_id
+            char_perturb_nums = np.random.choice(list(range(min_char_perturb_num, max_char_perturb_num + 1)), size=len(word_indices), replace=True)
+            char_indices = [[None] * char_perturb_num for char_perturb_num in char_perturb_nums]
+        else:
+            char_indices = [sub_char_indices if isinstance(sub_char_indices, list) else [sub_char_indices] for sub_char_indices in char_indices]    
+        # Get attacking methods
+        if attack_methods is None:
+            attack_methods = [np.random.choice(["insert", "drop", "swap", "substitute"], size=char_perturb_num, replace=True, p=[self.insert_p, self.drop_p, self.swap_p, self.substitute_p]) for char_perturb_num in char_perturb_nums]
+        else:
+            attack_methods = [sub_attack_methods if isinstance(sub_attack_methods, list) else [sub_attack_methods] for sub_attack_methods in attack_methods]    
         # Attack
-        pert_tokens = tokens
-        for word_id, attack_method, char_id in zip(word_indices, attack_methods, char_indices):
-            if attack_method == "insert":
-                pert_tokens = self.insert_attacker(tokens=pert_tokens, word_id=word_id, char_id=char_id, return_tokens=True)
-            elif attack_method == "drop":
-                pert_tokens = self.drop_attacker(tokens=pert_tokens, word_id=word_id, char_id=char_id, return_tokens=True)
-            elif attack_method == "swap":
-                pert_tokens = self.swap_attacker(tokens=pert_tokens, word_id=word_id, char_id=char_id, return_tokens=True)
-            elif attack_method == "substitute":
-                pert_tokens = self.substitute_attacker(tokens=pert_tokens, word_id=word_id, char_id=char_id, return_tokens=True)
+        pert_tokens = tokens.copy()
+        for word_id, sub_attack_methods, sub_char_indices in zip(word_indices, attack_methods, char_indices):
+            for attack_method, char_id in zip(sub_attack_methods, sub_char_indices):
+                if attack_method == "insert":
+                    pert_tokens = self.insert_attacker(tokens=pert_tokens, word_id=word_id, char_id=char_id, return_tokens=True)
+                elif attack_method == "drop":
+                    pert_tokens = self.drop_attacker(tokens=pert_tokens, word_id=word_id, char_id=char_id, return_tokens=True)
+                elif attack_method == "swap":
+                    pert_tokens = self.swap_attacker(tokens=pert_tokens, word_id=word_id, char_id=char_id, return_tokens=True)
+                elif attack_method == "substitute":
+                    pert_tokens = self.substitute_attacker(tokens=pert_tokens, word_id=word_id, char_id=char_id, return_tokens=True)
         if return_tokens:
             return pert_tokens
         else:
             return " ".join(pert_tokens)
 
+    def __call__(self, *args, n=1, **kwargs):
+        assert n >= 1, "n must be equal or more than 1"
+        if n == 1:
+            return self._augment(*args, **kwargs)
+        else:
+            return [self._augment(*args, **kwargs) for _ in range(n)]
 
-class UnsupervisedAdversarialCharacterAttacker:
-    def __init__(self, sentences_embedding, keyboard_constrain=False):
-        self.sentences_embedding = sentences_embedding
+
+class BaseAdversarialAttacker:
+    @abstractmethod
+    def encode(self, sentences):
+        raise NotImplementedError("Please implement this method which receives list of sentences and returns tensor of size (sentence_num, embedding_dim)")
+
+    def candidates_ranking(self, candidates, references):
+        if not isinstance(references, list):
+            references = [references]
+        # Embedding
+        reference_embeddings = self.encode(references)     # (reference_size, embedding_dim)
+        candidate_embeddings = self.encode(candidates)     # (search_size, embedding_dim)
+        # Calculate Similarity
+        similarity = torch.nn.CosineSimilarity(dim=-1)(reference_embeddings.unsqueeze(1), candidate_embeddings.unsqueeze(0))  # (reference_size, search_size)
+        similarity, _ = torch.max(similarity, dim=0)  # (search_size, )
+        # Ranking
+        sorted_indices = torch.argsort(similarity, dim=-1, descending=False)
+        return sorted_indices
+
+    def word_importance_ranking(self, words, references=None):
+        if len(words) == 1:
+            return [0]
+        # Get candidates
+        candidates = [words2sentence([word for i, word in enumerate(words) if i != word_id]) for word_id in range(len(words))]
+        # Ranking
+        if references is None:
+            references = [words2sentence(words)]
+        sorted_indices = self.candidates_ranking(candidates, references)
+        return sorted_indices
+
+    def char_importance_ranking(self, words, target_word_id, references=None):
+        if len(words[target_word_id]) == 1:
+            return [0]
+        # Get candidates
+        candidates = []
+        chars = word2chars(words[target_word_id])
+        for char_id in range(len(chars)):
+            pert_word = chars2word(chars[:char_id] + chars[char_id+1:])
+            pert_sentence = words2sentence([words[word_id] if word_id != target_word_id else pert_word for word_id in range(len(words))])
+            candidates.append(pert_sentence)
+        # Ranking
+        if references is None:
+            references = [words2sentence(words)]
+        sorted_indices = self.candidates_ranking(candidates, references)
+        return sorted_indices
+
+
+class FilterAdversarialattacker(BaseAdversarialAttacker):
+    def __call__(self, candidates, references, top_k=1, last_k=1):
+        sorted_indices = self.candidates_ranking(candidates, references)
+        # Get top k
+        top_k_sentences = [candidates[sorted_indices[i]] for i in range(top_k)]
+        # Get last k
+        last_k_sentences = [candidates[sorted_indices[-(i+1)]] for i in range(last_k)]
+        return top_k_sentences, last_k_sentences
+
+
+class RandomSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
+    def __init__(self, *args, search_size=10, **kwargs):
+        self.filter = FilterAdversarialattacker()
+        self.attacker = RandomCharacterAttacker(*args, **kwargs)
+        self.search_size = search_size
+
+    def get_candidates(self, sentence, perturb_num=1, min_char_perturb_num=1, max_char_perturb_num=1, min_word_len=3):
+        candidates = self.attacker(sentence, 
+                                   n=self.search_size, 
+                                   perturb_num=perturb_num, 
+                                   min_char_perturb_num=min_char_perturb_num, 
+                                   max_char_perturb_num=max_char_perturb_num,
+                                   min_word_len=min_word_len)
+        return list(set(candidates))
+
+    def __call__(self, 
+                 sentence, 
+                 candidates=None, 
+                 top_k=1, 
+                 last_k=1,
+                 perturb_num=1, 
+                 min_char_perturb_num=1,
+                 max_char_perturb_num=1,
+                 min_word_len=3,
+                ):
+        # Generate candidates
+        if candidates is None:
+            candidates = self.get_candidates(sentence, perturb_num, min_char_perturb_num, max_char_perturb_num, min_word_len)
+        else:
+            assert isinstance(candidates, list), "candidates must be a list of size (batch_size x search_size, )"
+        return self.filter(candidates, sentence, top_k=top_k, last_k=last_k)
+
+
+class NarrowSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
+    def __init__(self, *args, search_size=10, **kwargs):
+        self.attacker = RandomCharacterAttacker(*args, **kwargs)
+        self.search_size = search_size
+
+    def get_candidates(self, tokens, word_id, char_perturb_num=1, min_word_len=3):
+        candidates = self.attacker(tokens=tokens, 
+                                   n=self.search_size, 
+                                   min_char_perturb_num=char_perturb_num, 
+                                   max_char_perturb_num=char_perturb_num, 
+                                   min_word_len=min_word_len, 
+                                   word_indices=[word_id])
+        return list(set(candidates))
+
+    def generate_adversarial_samples(self, 
+            original_sent, 
+            k=1,
+            mode="top_k", 
+            perturb_num=1, 
+            min_char_perturb_num=1, 
+            max_char_perturb_num=1, 
+            min_word_len=3
+        ):
+        # Get word indices sorted by importantness
+        words = sentence2words(original_sent)
+        valid_indices = [word_id for word_id in np.arange(len(words)) if word_validation(words[word_id], min_word_len)]
+        sorted_word_indices = [word_id for word_id in self.word_importance_ranking(words) if word_id in valid_indices]
+
+        if len(valid_indices) == 0:
+            return [original_sent]
+
+        if isinstance(perturb_num, int):
+            perturb_num = min(perturb_num, len(valid_indices))
+        else:
+            perturb_num = math.ceil(perturb_num * len(valid_indices))
+
+        # Determine number of character perturbations for each word_id
+        char_perturb_nums = np.random.choice(list(range(min_char_perturb_num, max_char_perturb_num + 1)), size=perturb_num, replace=True)
+
+        adv_samples = []
+        pert_words = words.copy()
+        for i in range(perturb_num):
+            if mode == "top_k":
+                target_word_id = sorted_word_indices[i]
+            else:
+                target_word_id = sorted_word_indices[-(i+1)]
+            char_perturb_num = char_perturb_nums[i]
+            # Generate candidates
+            candidates = self.get_candidates(pert_words, target_word_id, char_perturb_num, min_word_len)
+            sorted_indices = self.candidates_ranking(candidates, original_sent)
+            # Update pert_words
+            if i < perturb_num - 1:
+                if mode == "top_k":
+                    pert_words = sentence2words(candidates[sorted_indices[0]])
+                else:
+                    pert_words = sentence2words(candidates[sorted_indices[-1]])
+            else:
+                for k in range(min(k, len(candidates))):
+                    t_pert_words = pert_words.copy()
+                    if mode == "top_k":
+                        t_pert_words = sentence2words(candidates[sorted_indices[k]])
+                    else:
+                        t_pert_words = sentence2words(candidates[sorted_indices[-(k+1)]])
+                    adv_samples.append(words2sentence(t_pert_words))
+                # The candidates are not enough for the target top_k, continue searching
+                if len(adv_samples) < k:
+                    for j in range(len(sorted_word_indices) - perturb_num):
+                        if mode == "top_k":
+                            target_word_id = sorted_word_indices[i+j+1]
+                        else:
+                            target_word_id = sorted_word_indices[-(i+j+2)]
+                        char_perturb_num = char_perturb_nums[i]
+                        # Generate candidates
+                        candidates = self.get_candidates(pert_words, target_word_id, char_perturb_num, min_word_len)
+                        sorted_indices = self.candidates_ranking(candidates, original_sent)
+                        for k in range(min(k, len(candidates))):
+                            t_pert_words = pert_words.copy()
+                            if mode == "top_k":
+                                t_pert_words = sentence2words(candidates[sorted_indices[k]])
+                            else:
+                                t_pert_words = sentence2words(candidates[sorted_indices[-(k+1)]])
+                            adv_samples.append(words2sentence(t_pert_words))
+                        if len(adv_samples) >= k:
+                            break
+                if len(adv_samples) < k:
+                    print(f"(Warning): {mode} of {k} is too large. Output size of {mode} will be smaller than expected.")
+        return adv_samples
+
+    def __call__(self,
+            sentence,
+            top_k=1,
+            last_k=1,
+            perturb_num=1,
+            min_char_perturb_num=1,
+            max_char_perturb_num=1,
+            min_word_len=3,
+        ):
+        # Top k
+        top_k_sents = self.generate_adversarial_samples(sentence, 
+                                                        k=top_k, 
+                                                        mode="top_k", 
+                                                        perturb_num=perturb_num, 
+                                                        min_char_perturb_num=min_char_perturb_num, 
+                                                        max_char_perturb_num=max_char_perturb_num, 
+                                                        min_word_len=min_word_len)
+
+        # Last k
+        last_k_sents = self.generate_adversarial_samples(sentence, 
+                                                         k=last_k, 
+                                                         mode="last_k", 
+                                                         perturb_num=perturb_num, 
+                                                         min_char_perturb_num=min_char_perturb_num, 
+                                                         max_char_perturb_num=max_char_perturb_num, 
+                                                         min_word_len=min_word_len)
+        return top_k_sents, last_k_sents
+
+
+class DiversionNarrowSearchAdversarialCharacterAttacker(NarrowSearchAdversarialCharacterAttacker):
+    def generate_adversarial_samples(self, 
+            original_sent, 
+            k=1,
+            mode="top_k", 
+            perturb_num=1, 
+            min_char_perturb_num=1, 
+            max_char_perturb_num=1, 
+            min_word_len=3,
+        ):
+        words = sentence2words(original_sent)
+        valid_indices = [word_id for word_id in np.arange(len(words)) if word_validation(words[word_id], min_word_len)]
+
+        if len(valid_indices) == 0:
+            return [original_sent]
+
+        if isinstance(perturb_num, int):
+            perturb_num = min(perturb_num, len(valid_indices))
+        else:
+            perturb_num = math.ceil(perturb_num * len(valid_indices))
+
+        adv_samples = []
+        references = [original_sent]
+        for _ in tqdm(range(k)):
+            pert_words = words.copy()
+            # Get word indices sorted by importantness
+            sorted_word_indices = [word_id for word_id in self.word_importance_ranking(words, references) if word_id in valid_indices]
+            # Determine number of character perturbations for each word_id
+            char_perturb_nums = np.random.choice(list(range(min_char_perturb_num, max_char_perturb_num + 1)), size=perturb_num, replace=True)
+            for i in range(perturb_num):
+                if mode == "top_k":
+                    target_word_id = sorted_word_indices[i]
+                else:
+                    target_word_id = sorted_word_indices[-(i+1)]
+                char_perturb_num = char_perturb_nums[i]
+                # Generate candidates
+                candidates = self.get_candidates(pert_words, target_word_id, char_perturb_num, min_word_len)
+                sorted_indices = self.candidates_ranking(candidates, references)
+                # Update pert_words
+                if mode == "top_k":
+                    pert_words = sentence2words(candidates[sorted_indices[0]])
+                else:
+                    pert_words = sentence2words(candidates[sorted_indices[-1]])
+                # Get adv_sample
+                if i >= perturb_num - 1:
+                    adv_sample = words2sentence(pert_words)
+                    adv_samples.append(adv_sample)
+                    references.append(adv_sample)
+        return adv_samples
+
+
+class BeamSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
+    def __init__(self, allow_insert=True, allow_drop=True, allow_swap=True, allow_substitute=True, keyboard_constrain=False):
+        self.allow_insert = allow_insert
+        self.allow_drop = allow_drop
+        self.allow_swap = allow_swap
+        self.allow_substitute = allow_substitute
         self.insert_attacker = InsertCharacterAttacker(keyboard_constrain)
         self.drop_attacker = DropCharacterAttacker(keyboard_constrain)
         self.swap_attacker = SwapCharacterAttacker(keyboard_constrain)
         self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain)
 
-    def __call__(self, sentence1, sentence2=None, perturb_num=1):
-        tokens1 = sentence1.split(" ")
-        if sentence2 is not None:
-            tokens2 = sentence2.split(" ")
+    def get_candidates(self, tokens, word_id, char_id):
+        target_word = list(tokens[word_id])
 
-        # Initial perturbated sentences
-        pert_sentence1 = sentence1
-        if sentence2 is not None:
-            pert_sentence2 = sentence2
+        perturb_words = []
+        if self.allow_insert:
+            perturb_words.extend(self.insert_attacker.get_pert_words(target_word, char_id, return_all_possible=True))
+        if self.allow_drop:
+            perturb_words.extend(self.drop_attacker.get_pert_words(target_word, char_id, return_all_possible=True))
+        if self.allow_swap:
+            perturb_words.extend(self.swap_attacker.get_pert_words(target_word, char_id, return_all_possible=True))
+        if self.allow_substitute:
+            perturb_words.extend(self.substitute_attacker.get_pert_words(target_word, char_id, return_all_possible=True))
+        
+        candidates = []
+        for perturb_word in perturb_words:
+            t_words = tokens.copy()
+            t_words[word_id] = perturb_word
+            perturb_sentence = words2sentence(t_words)
+            candidates.append(perturb_sentence)
+        return candidates
 
-        # Get original sentence embeddings
-        with torch.no_grad():
-            sent_embedding1 = self.sentences_embedding([sentence1])         # (1, hidden_size)
-            if sentence2 is not None:
-                sent_embedding2 = self.sentences_embedding([sentence2])     # (1, hidden_size)
-                # Calculate sentences similarity
-                ori_sents_sim = CosineSimilarity(dim=-1)(sent_embedding1, sent_embedding2)  # (1, )
+    def generate_adversarial_samples(self, 
+            original_sent, 
+            k=1,
+            mode="top_k", 
+            perturb_num=1, 
+            min_char_perturb_num=1, 
+            max_char_perturb_num=1, 
+            min_word_len=3
+        ):
+        # Get word indices sorted by importantness
+        words = sentence2words(original_sent)
+        valid_indices = [word_id for word_id in np.arange(len(words)) if word_validation(words[word_id], min_word_len)]
+        sorted_word_indices = [word_id for word_id in self.word_importance_ranking(words) if word_id in valid_indices]
 
-            # Search the most important word (token)
-            t_pert_sentences1 = [" ".join(tokens1[:i] + tokens1[i + 1:]) if word_validation(word) else sentence1 for i, word in enumerate(tokens1)]
-            if sentence2 is not None:
-                t_pert_sentences2 = [" ".join(tokens2[:i] + tokens2[i + 1:]) if word_validation(word) else sentence2 for i, word in enumerate(tokens2)]
-                t_pert_embedding1 = self.sentences_embedding(t_pert_sentences1)     # (tokens1_size, hidden_size)
-                t_pert_embedding2 = self.sentences_embedding(t_pert_sentences2)     # (tokens2_size, hidden_size)
-                # Calculate sentences similarity
-                pert_sents_sim = CosineSimilarity(dim=-1)(t_pert_embedding1.unsqueeze(1), t_pert_embedding2.unsqueeze(0))   # (tokens1_size, tokens2_size)
-                # Get the most importance token
-                diff_sents_sim = torch.abs(pert_sents_sim - ori_sents_sim)
-                flatten_ids = torch.argsort(diff_sents_sim.flatten(), descending=True)
-                word1_ids = (flatten_ids / diff_sents_sim.size(1)).long()
-                word2_ids = (flatten_ids % diff_sents_sim.size(1)).long()
-            else:
-                t_pert_embedding1 = self.sentences_embedding(t_pert_sentences1)
-                # Get the most importance token
-                diff_sents_embedding = torch.mean(torch.abs(t_pert_embedding1 - sent_embedding1), dim=-1)     # (tokens1_size, )
-                word1_ids = torch.argsort(diff_sents_embedding, descending=True)
+        if len(valid_indices) == 0:
+            return [original_sent]
 
-            for i in range(perturb_num):
-                word1_id = word1_ids[i]
-                word2_id = word2_ids[i]
-                # Search the most important character
-                t_pert_sentences1 = [self.drop_attacker(pert_sentence1, word_id=word1_id, char_id=char_id) for char_id in range(len(pert_sentence1.split(" ")[word1_id]))]
-                if sentence2 is not None:
-                    t_pert_sentences2 = [self.drop_attacker(pert_sentence2, word_id=word2_id, char_id=char_id) for char_id in range(len(pert_sentence2.split(" ")[word2_id]))]
-                    t_pert_embedding1 = self.sentences_embedding(t_pert_sentences1)     # (char1_size, hidden_size)
-                    t_pert_embedding2 = self.sentences_embedding(t_pert_sentences2)     # (char2_size, hidden_size)
-                    # Calculate sentences similarity
-                    pert_sents_sim = CosineSimilarity(dim=-1)(t_pert_embedding1.unsqueeze(1), t_pert_embedding2.unsqueeze(0))   # (char1_size, char2_size)
-                    # Get the most importance token
-                    diff_sents_sim = torch.abs(pert_sents_sim - ori_sents_sim)
-                    flatten_id = torch.argmax(diff_sents_sim)
-                    char1_id = int(flatten_id / diff_sents_sim.size(1))
-                    char2_id = flatten_id % diff_sents_sim.size(1)
-                else:
-                    t_pert_embedding1 = self.sentences_embedding(t_pert_sentences1)
-                    # Get the most importance token
-                    diff_sents_embedding = torch.mean(torch.abs(t_pert_embedding1 - sent_embedding1), dim=-1)     # (char1_size, )
-                    char1_id = torch.argmax(diff_sents_embedding)
-
-                # Get perturbated sentences
-                t_pert_sentences1 = self.insert_attacker(pert_sentence1, word_id=word1_id, char_id=char1_id, return_all_possible=True)
-                t_pert_sentences1 += self.drop_attacker(pert_sentence1, word_id=word1_id, char_id=char1_id, return_all_possible=True)
-                t_pert_sentences1 += self.swap_attacker(pert_sentence1, word_id=word1_id, char_id=char1_id, return_all_possible=True)
-                t_pert_sentences1 += self.substitute_attacker(pert_sentence1, word_id=word1_id, char_id=char1_id, return_all_possible=True)
-                if sentence2 is not None:
-                    t_pert_sentences2 = self.insert_attacker(pert_sentence2, word_id=word2_id, char_id=char2_id, return_all_possible=True)
-                    t_pert_sentences2 += self.drop_attacker(pert_sentence2, word_id=word2_id, char_id=char2_id, return_all_possible=True)
-                    t_pert_sentences2 += self.swap_attacker(pert_sentence2, word_id=word2_id, char_id=char2_id, return_all_possible=True)
-                    t_pert_sentences2 += self.substitute_attacker(pert_sentence2, word_id=word2_id, char_id=char2_id, return_all_possible=True)
-                    t_pert_embedding1 = self.sentences_embedding(t_pert_sentences1)     # (sent1_size, hidden_size)
-                    t_pert_embedding2 = self.sentences_embedding(t_pert_sentences2)     # (sent2_size, hidden_size)
-                    # Calculate sentences similarity
-                    pert_sents_sim = CosineSimilarity(dim=-1)(t_pert_embedding1.unsqueeze(1), t_pert_embedding2.unsqueeze(0))   # (sent1_size, sent2_size)
-                    # Get the most importance token
-                    diff_sents_sim = torch.abs(pert_sents_sim - ori_sents_sim)
-                    flatten_id = torch.argmax(diff_sents_sim)
-                    sent1_id = int(flatten_id / diff_sents_sim.size(1))
-                    sent2_id = flatten_id % diff_sents_sim.size(1)
-                else:
-                    t_pert_embedding1 = self.sentences_embedding(t_pert_sentences1)
-                    # Get the most importance token
-                    diff_sents_embedding = torch.mean(torch.abs(t_pert_embedding1 - sent_embedding1), dim=-1)     # (sent1_size, )
-                    sent1_id = torch.argmax(diff_sents_embedding)
-
-                # Update perturbated sentence output
-                pert_sentence1 = t_pert_sentences1[sent1_id]
-                if sentence2 is not None:
-                    pert_sentence2 = t_pert_sentences2[sent2_id]
-
-        if sentence2 is not None:
-            return pert_sentence1, pert_sentence2
+        if isinstance(perturb_num, int):
+            perturb_num = min(perturb_num, len(valid_indices))
         else:
-            return pert_sentence1
+            perturb_num = math.ceil(perturb_num * len(valid_indices))
 
+        # Determine number of character perturbations for each word_id
+        char_perturb_nums = np.random.choice(list(range(min_char_perturb_num, max_char_perturb_num + 1)), size=perturb_num, replace=True)
 
-class SupervisedAdversarialCharacterAttacker:
-    def __init__(self, model_prediction, keyboard_constrain=False):
-        self.model_prediction = model_prediction
-        self.insert_attacker = InsertCharacterAttacker(keyboard_constrain)
-        self.drop_attacker = DropCharacterAttacker(keyboard_constrain)
-        self.swap_attacker = SwapCharacterAttacker(keyboard_constrain)
-        self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain)
-
-    def __call__(self, sentence1, sentence2=None, target=None, objective=None, perturb_num=1):
-        tokens1 = sentence1.split(" ")
-        if sentence2 is not None:
-            tokens2 = sentence2.split(" ")
-
-        # Initial perturbated sentences
-        pert_sentence1 = sentence1
-        if sentence2 is not None:
-            pert_sentence2 = sentence2
-
-        # Get original sentence embeddings
-        with torch.no_grad():
-            # Search the most important word (token)
-            t_pert_sentences1 = [" ".join(tokens1[:i] + tokens1[i + 1:]) if word_validation(word) else sentence1 for i, word in enumerate(tokens1)]
-            if sentence2 is not None:
-                t_pert_sentences2 = [" ".join(tokens2[:i] + tokens2[i + 1:]) if word_validation(word) else sentence2 for i, word in enumerate(tokens2)]
-                t_pert_sentences_pair = [[sentence1, sentence2] for sentence1 in t_pert_sentences1 for sentence2 in t_pert_sentences2]
-                t_pert_pred = self.model_prediction(*t_pert_sentences_pair)     # (tokens1_size * tokens2_size, output_size)
-                # Get the most importance token
-                loss = objective(t_pert_pred, target)
-                flatten_ids = torch.argsort(loss, descending=True)
-                word1_ids = (flatten_ids / len(t_pert_sentences2)).long()
-                word2_ids = (flatten_ids % len(t_pert_sentences2)).long()
+        adv_samples = []
+        pert_words = words.copy()
+        for i in range(perturb_num):
+            if mode == "top_k":
+                target_word_id = sorted_word_indices[i]
             else:
-                t_pert_pred = self.model_prediction(t_pert_sentences1)
-                # Get the most importance token
-                loss = objective(t_pert_pred, target)
-                word1_ids = torch.argsort(loss, descending=True)
-
-            for i in range(perturb_num):
-                word1_id = word1_ids[i]
-                word2_id = word2_ids[i]
-                # Search the most important character
-                t_pert_sentences1 = [self.drop_attacker(pert_sentence1, word_id=word1_id, char_id=char_id) for char_id in range(len(pert_sentence1.split(" ")[word1_id]))]
-                if sentence2 is not None:
-                    t_pert_sentences2 = [self.drop_attacker(pert_sentence2, word_id=word2_id, char_id=char_id) for char_id in range(len(pert_sentence2.split(" ")[word2_id]))]
-                    t_pert_pred = self.model_prediction(*t_pert_sentences_pair)     # (char1_size * char2_size, output_size)
-                    # Get the most importance token
-                    loss = objective(t_pert_pred, target)
-                    flatten_id = torch.argmax(loss)
-                    char1_id = int(flatten_id / len(t_pert_sentences2))
-                    char2_id = flatten_id % len(t_pert_sentences2)
+                target_word_id = sorted_word_indices[-(i+1)]
+            for j in range(min(len(pert_words[target_word_id]), char_perturb_nums[i])):
+                # Get character indices sorted by importantness
+                sorted_char_indices = self.char_importance_ranking(pert_words, target_word_id)
+                if mode == "top_k":
+                    target_char_id = sorted_char_indices[0]
                 else:
-                    t_pert_pred = self.model_prediction(t_pert_sentences1)
-                    # Get the most importance token
-                    loss = objective(t_pert_pred, target)
-                    char1_id = torch.argmax(loss)
-
-                # Get perturbated sentences
-                t_pert_sentences1 = self.insert_attacker(pert_sentence1, word_id=word1_id, char_id=char1_id, return_all_possible=True)
-                t_pert_sentences1 += self.drop_attacker(pert_sentence1, word_id=word1_id, char_id=char1_id, return_all_possible=True)
-                t_pert_sentences1 += self.swap_attacker(pert_sentence1, word_id=word1_id, char_id=char1_id, return_all_possible=True)
-                t_pert_sentences1 += self.substitute_attacker(pert_sentence1, word_id=word1_id, char_id=char1_id, return_all_possible=True)
-                if sentence2 is not None:
-                    t_pert_sentences2 = self.insert_attacker(pert_sentence2, word_id=word2_id, char_id=char2_id, return_all_possible=True)
-                    t_pert_sentences2 += self.drop_attacker(pert_sentence2, word_id=word2_id, char_id=char2_id, return_all_possible=True)
-                    t_pert_sentences2 += self.swap_attacker(pert_sentence2, word_id=word2_id, char_id=char2_id, return_all_possible=True)
-                    t_pert_sentences2 += self.substitute_attacker(pert_sentence2, word_id=word2_id, char_id=char2_id, return_all_possible=True)
-                    t_pert_pred = self.model_prediction(*t_pert_sentences_pair)     # (sent1_size * sent2_size, output_size)
-                    # Get the most importance token
-                    loss = objective(t_pert_pred, target)
-                    flatten_id = torch.argmax(loss)
-                    sent1_id = int(flatten_id / len(t_pert_sentences2))
-                    sent2_id = flatten_id % len(t_pert_sentences2)
+                    target_char_id = sorted_char_indices[-1]
+                # Generate candidates
+                candidates = self.get_candidates(pert_words, target_word_id, target_char_id)
+                sorted_indices = self.candidates_ranking(candidates, original_sent)
+                # Update pert_words
+                if i < perturb_num - 1 or j < char_perturb_nums[i] - 1:
+                    if mode == "top_k":
+                        pert_words = sentence2words(candidates[sorted_indices[0]])
+                    else:
+                        pert_words = sentence2words(candidates[sorted_indices[-1]])
                 else:
-                    t_pert_pred = self.model_prediction(t_pert_sentences1)
-                    # Get the most importance token
-                    loss = objective(t_pert_pred, target)
-                    sent1_id = torch.argmax(loss)
+                    for k in range(min(k, len(candidates))):
+                        t_pert_words = pert_words.copy()
+                        if mode == "top_k":
+                            t_pert_words = sentence2words(candidates[sorted_indices[k]])
+                        else:
+                            t_pert_words = sentence2words(candidates[sorted_indices[-(k+1)]])
+                        adv_samples.append(words2sentence(t_pert_words))
+                    # The candidates are not enough for the target top_k, continue searching a little bit
+                    if len(adv_samples) < k:
+                        for n in range(len(pert_words[target_word_id]) - char_perturb_nums[i]):
+                            if mode == "top_k":
+                                target_char_id = sorted_char_indices[n+1]
+                            else:
+                                target_char_id = sorted_char_indices[-(n+2)]
+                            # Get candidates
+                            candidates = self.get_candidates(pert_words, target_word_id, target_char_id)
+                            sorted_indices = self.candidates_ranking(candidates, original_sent)
+                            for k in range(min(k, len(candidates))):
+                                t_pert_words = pert_words.copy()
+                                if mode == "top_k":
+                                    t_pert_words = sentence2words(candidates[sorted_indices[k]])
+                                else:
+                                    t_pert_words = sentence2words(candidates[sorted_indices[-(k+1)]])
+                                adv_samples.append(words2sentence(t_pert_words))
+                            if len(adv_samples) >= k:
+                                break
+                    if len(adv_samples) < k:
+                        print(f"(Warning): {mode} of {k} is too large. Output size of {mode} will be smaller than expected.")
+        return adv_samples
 
-                # Update perturbated sentence output
-                pert_sentence1 = t_pert_sentences1[sent1_id]
-                if sentence2 is not None:
-                    pert_sentence2 = t_pert_sentences2[sent2_id]
+    def __call__(self, 
+            sentence, 
+            top_k=1, 
+            last_k=1,
+            perturb_num=1, 
+            min_char_perturb_num=1, 
+            max_char_perturb_num=1, 
+            min_word_len=3
+        ):
+        # Top k
+        top_k_sents = self.generate_adversarial_samples(sentence, 
+                                                        k=top_k, 
+                                                        mode="top_k", 
+                                                        perturb_num=perturb_num, 
+                                                        min_char_perturb_num=min_char_perturb_num, 
+                                                        max_char_perturb_num=max_char_perturb_num, 
+                                                        min_word_len=min_word_len)
 
-        if sentence2 is not None:
-            return pert_sentence1, pert_sentence2
+        # Last k
+        last_k_sents = self.generate_adversarial_samples(sentence, 
+                                                         k=last_k, 
+                                                         mode="last_k", 
+                                                         perturb_num=perturb_num, 
+                                                         min_char_perturb_num=min_char_perturb_num, 
+                                                         max_char_perturb_num=max_char_perturb_num, 
+                                                         min_word_len=min_word_len)
+        return top_k_sents, last_k_sents
+
+
+class DiversionBeamSearchAdversarialCharacterAttacker(BeamSearchAdversarialCharacterAttacker):
+    def generate_adversarial_samples(self, 
+            original_sent, 
+            k=1,
+            mode="top_k", 
+            perturb_num=1, 
+            min_char_perturb_num=1, 
+            max_char_perturb_num=1, 
+            min_word_len=3
+        ):
+        words = sentence2words(original_sent)
+        valid_indices = [word_id for word_id in np.arange(len(words)) if word_validation(words[word_id], min_word_len)]
+
+        if len(valid_indices) == 0:
+            return [original_sent]
+
+        if isinstance(perturb_num, int):
+            perturb_num = min(perturb_num, len(valid_indices))
         else:
-            return pert_sentence1
+            perturb_num = math.ceil(perturb_num * len(valid_indices))
+
+        adv_samples = []
+        references = [original_sent]
+        for _ in tqdm(range(k)):
+            pert_words = words.copy()
+            # Get word indices sorted by importantness
+            sorted_word_indices = [word_id for word_id in self.word_importance_ranking(words, references) if word_id in valid_indices]
+            # Determine number of character perturbations for each word_id
+            char_perturb_nums = np.random.choice(list(range(min_char_perturb_num, max_char_perturb_num + 1)), size=perturb_num, replace=True)
+            for i in range(perturb_num):
+                if mode == "top_k":
+                    target_word_id = sorted_word_indices[i]
+                else:
+                    target_word_id = sorted_word_indices[-(i+1)]
+                for j in range(min(len(pert_words[target_word_id]), char_perturb_nums[i])):
+                    # Get character indices sorted by importantness
+                    sorted_char_indices = self.char_importance_ranking(pert_words, target_word_id, references)
+                    if mode == "top_k":
+                        target_char_id = sorted_char_indices[0]
+                    else:
+                        target_char_id = sorted_char_indices[-1]
+                    # Generate candidates
+                    candidates = self.get_candidates(pert_words, target_word_id, target_char_id)
+                    sorted_indices = self.candidates_ranking(candidates, references)
+                    # Update pert_words
+                    if mode == "top_k":
+                        pert_words = sentence2words(candidates[sorted_indices[0]])
+                    else:
+                        pert_words = sentence2words(candidates[sorted_indices[-1]])
+                    # Get adv_sample
+                    if i >= perturb_num - 1 and j >= char_perturb_nums[i] - 1:
+                        adv_sample = words2sentence(pert_words)
+                        adv_samples.append(adv_sample)
+                        references.append(adv_sample)
+        return adv_samples

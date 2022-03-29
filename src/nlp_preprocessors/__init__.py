@@ -24,8 +24,12 @@ from .padding import ImagePadding
 # from .padding import SignalPadding
 
 from .attacker import RandomCharacterAttacker
-from .attacker import UnsupervisedAdversarialCharacterAttacker
-from .attacker import SupervisedAdversarialCharacterAttacker
+from .attacker import FilterAdversarialattacker
+from .attacker import RandomSearchAdversarialCharacterAttacker
+from .attacker import NarrowSearchAdversarialCharacterAttacker
+from .attacker import DiversionNarrowSearchAdversarialCharacterAttacker
+from .attacker import BeamSearchAdversarialCharacterAttacker
+from .attacker import DiversionBeamSearchAdversarialCharacterAttacker
 from .attacker import RandomWordAttacker
 
 from .Preprocessor import SequentialPreprocessor
