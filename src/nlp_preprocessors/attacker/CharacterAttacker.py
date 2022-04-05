@@ -1,8 +1,8 @@
 import math
 import torch
 import numpy as np
-from tqdm import tqdm
 from abc import abstractmethod
+from sklearn.cluster import KMeans
 
 
 eng_characters = [
@@ -14,6 +14,12 @@ nearby_characters = {
     "q": "was", "w": "qeasd", "e": "wrsdf", "r": "etdfg", "t": "ryfgh", "y": "tughj", "u": "yihjk", "i": "uojkl", "o": "ipkl", "p": "ol",
     "a": "qwszx", "s": "qweadzxc", "d": "wersfzxcv", "f": "ertdgxcvb", "g": "rtyfhcvbn", "h": "tyugjvbnm", "j": "yuihkbnm", "k": "uiojlnm", "l": "iopkm", 
     "z": "asdx", "x": "sdfzc", "c": "dfgxv", "v": "fghcb", "b": "ghjvn", "n": "hjkbm", "m": "jkln"
+}
+numeric_characters = [
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"
+]
+nearby_numerics = {
+    "q": "12", "w": "123", "e": "234", "r": "345", "t": "456", "y": "567", "u": "678", "i": "789", "o": "890", "p": "90"
 }
 
 
@@ -34,8 +40,9 @@ def chars2word(chars):
 
 
 class BaseCharacterAttacker:
-    def __init__(self, keyboard_constrain=False):
+    def __init__(self, keyboard_constrain=False, allow_numeric=False):
         self.keyboard_constrain = keyboard_constrain
+        self.allow_numeric = allow_numeric
 
     @staticmethod
     def get_word_id(tokens, min_word_len=3):
@@ -102,17 +109,25 @@ class InsertCharacterAttacker(BaseCharacterAttacker):
         if self.keyboard_constrain:
             target_char = word[char_id]
             if target_char in nearby_characters:
+                candidate_chars = list(nearby_characters[target_char])
+                if self.allow_numeric and target_char in nearby_numerics:
+                    candidate_chars += list(nearby_numerics[target_char])
+
                 if return_all_possible:
-                    insert_chars = list(nearby_characters[target_char])
+                    insert_chars = candidate_chars
                 else:
-                    insert_chars = np.random.choice(list(nearby_characters[target_char]), size=1)
+                    insert_chars = np.random.choice(candidate_chars, size=1)
             else:
                 insert_chars = [target_char]
         else:
+            candidate_chars = eng_characters
+            if self.allow_numeric:
+                candidate_chars += numeric_characters
+
             if return_all_possible:
-                insert_chars = eng_characters
+                insert_chars = candidate_chars
             else:
-                insert_chars = np.random.choice(eng_characters, size=1)
+                insert_chars = np.random.choice(candidate_chars, size=1)
         pert_words = []
         for insert_char in insert_chars:
             t_word = word.copy()
@@ -179,17 +194,25 @@ class SubstituteCharacterAttacker(BaseCharacterAttacker):
         if self.keyboard_constrain:
             target_char = word[char_id]
             if target_char in nearby_characters:
+                candidate_chars = list(nearby_characters[target_char])
+                if self.allow_numeric and target_char in nearby_numerics:
+                    candidate_chars += list(nearby_numerics[target_char])
+
                 if return_all_possible:
-                    substitute_chars = list(nearby_characters[target_char])
+                    substitute_chars = candidate_chars
                 else:
-                    substitute_chars = np.random.choice(list(nearby_characters[target_char]), size=1)
+                    substitute_chars = np.random.choice(candidate_chars, size=1)
             else:
                 substitute_chars = [target_char]
         else:
+            candidate_chars = eng_characters
+            if self.allow_numeric:
+                candidate_chars += numeric_characters
+
             if return_all_possible:
-                substitute_chars = eng_characters
+                substitute_chars = candidate_chars
             else:
-                substitute_chars = np.random.choice(eng_characters, size=1)
+                substitute_chars = np.random.choice(candidate_chars, size=1)
         pert_words = []
         for substitute_char in substitute_chars:
             t_word = word.copy()
@@ -202,15 +225,15 @@ class SubstituteCharacterAttacker(BaseCharacterAttacker):
 
 
 class RandomCharacterAttacker:
-    def __init__(self, insert_p=0.25, drop_p=0.25, swap_p=0.25, substitute_p=0.25, keyboard_constrain=False):
+    def __init__(self, insert_p=0.25, drop_p=0.25, swap_p=0.25, substitute_p=0.25, keyboard_constrain=False, allow_numeric=False):
         self.insert_p = insert_p
         self.drop_p = drop_p
         self.swap_p = swap_p
         self.substitute_p = substitute_p
-        self.insert_attacker = InsertCharacterAttacker(keyboard_constrain)
-        self.drop_attacker = DropCharacterAttacker(keyboard_constrain)
-        self.swap_attacker = SwapCharacterAttacker(keyboard_constrain)
-        self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain)
+        self.insert_attacker = InsertCharacterAttacker(keyboard_constrain, allow_numeric)
+        self.drop_attacker = DropCharacterAttacker(keyboard_constrain, allow_numeric)
+        self.swap_attacker = SwapCharacterAttacker(keyboard_constrain, allow_numeric)
+        self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain, allow_numeric)
 
     def _augment(self,
             sentence=None, 
@@ -351,21 +374,44 @@ class BaseAdversarialAttacker:
         return sorted_indices
 
 
-class FilterAdversarialattacker(BaseAdversarialAttacker):
+class AdversarialFilter(BaseAdversarialAttacker):
     def __call__(self, candidates, references, top_k=1, last_k=1):
         sorted_indices = self.candidates_ranking(candidates, references)
+
+        returns = {}
         # Get top k
-        top_k_sentences = [candidates[sorted_indices[i]] for i in range(top_k)]
+        if top_k > 0:
+            top_k_sentences = [candidates[sorted_indices[i]] for i in range(top_k)]
+            returns["top_k"] = top_k_sentences
         # Get last k
-        last_k_sentences = [candidates[sorted_indices[-(i+1)]] for i in range(last_k)]
-        return top_k_sentences, last_k_sentences
+        if last_k > 0:
+            last_k_sentences = [candidates[sorted_indices[-(i+1)]] for i in range(last_k)]
+            returns["last_k"] = last_k_sentences
+        return returns
 
 
-class RandomSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
-    def __init__(self, *args, search_size=10, **kwargs):
-        self.filter = FilterAdversarialattacker()
-        self.attacker = RandomCharacterAttacker(*args, **kwargs)
+class ClusteringFilter(BaseAdversarialAttacker):
+    def __call__(self, candidates, cluster_num=5):
+        # Embeddings
+        embeddings = self.encode(candidates).cpu().detach().numpy()
+        # Clustering
+        cluster_indices = {cluster_id: [] for cluster_id in range(cluster_num)}
+        clusters = KMeans(cluster_num, random_state=0).fit(embeddings)
+        for embedding_id, cluster_id in enumerate(clusters.labels_):
+            cluster_indices[cluster_id].append(embedding_id)
+        # Sampling sentences from each cluster
+        p = {cluster_id: clusters.transform(embeddings[embedding_indices])[:, cluster_id] for cluster_id, embedding_indices in cluster_indices.items()}
+        p = {cluster_id: distances / np.sum(distances) if np.sum(distances) > 0 else np.ones_like(distances) for cluster_id, distances in p.items()}
+        candidate_indices = [np.random.choice(cluster_indices[cluster_id], size=1, p=p[cluster_id])[0] for cluster_id in range(cluster_num)]
+        sentences = [candidates[candidate_id] for candidate_id in candidate_indices]
+        return sentences
+
+
+class ClusteringRandomCharacterAttacker:
+    def __init__(self, filter, search_size=10, **kwargs):
+        self.filter = filter
         self.search_size = search_size
+        self.attacker = RandomCharacterAttacker(**kwargs)
 
     def get_candidates(self, sentence, perturb_num=1, min_char_perturb_num=1, max_char_perturb_num=1, min_word_len=3):
         candidates = self.attacker(sentence, 
@@ -378,7 +424,34 @@ class RandomSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
 
     def __call__(self, 
                  sentence, 
-                 candidates=None, 
+                 cluster_num=5, 
+                 perturb_num=1, 
+                 min_char_perturb_num=1,
+                 max_char_perturb_num=1,
+                 min_word_len=3,
+                ):
+        # Generate candidates
+        candidates = self.get_candidates(sentence, perturb_num, min_char_perturb_num, max_char_perturb_num, min_word_len)
+        return self.filter(candidates, cluster_num=cluster_num)
+        
+
+class RandomSearchAdversarialCharacterAttacker:
+    def __init__(self, filter, search_size=10, **kwargs):
+        self.filter = filter
+        self.search_size = search_size
+        self.attacker = RandomCharacterAttacker(**kwargs)
+
+    def get_candidates(self, sentence, perturb_num=1, min_char_perturb_num=1, max_char_perturb_num=1, min_word_len=3):
+        candidates = self.attacker(sentence, 
+                                   n=self.search_size, 
+                                   perturb_num=perturb_num, 
+                                   min_char_perturb_num=min_char_perturb_num, 
+                                   max_char_perturb_num=max_char_perturb_num,
+                                   min_word_len=min_word_len)
+        return list(set(candidates))
+
+    def __call__(self, 
+                 sentence, 
                  top_k=1, 
                  last_k=1,
                  perturb_num=1, 
@@ -387,11 +460,44 @@ class RandomSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
                  min_word_len=3,
                 ):
         # Generate candidates
-        if candidates is None:
-            candidates = self.get_candidates(sentence, perturb_num, min_char_perturb_num, max_char_perturb_num, min_word_len)
-        else:
-            assert isinstance(candidates, list), "candidates must be a list of size (batch_size x search_size, )"
+        candidates = self.get_candidates(sentence, perturb_num, min_char_perturb_num, max_char_perturb_num, min_word_len)
         return self.filter(candidates, sentence, top_k=top_k, last_k=last_k)
+
+
+class DiversionRandomSearchAdversarialCharacterAttacker(RandomSearchAdversarialCharacterAttacker):
+    def __call__(self, 
+                 sentence, 
+                 top_k=1, 
+                 last_k=1,
+                 perturb_num=1, 
+                 min_char_perturb_num=1,
+                 max_char_perturb_num=1,
+                 min_word_len=3,
+                ):
+        returns = {}
+        # Top k
+        if top_k > 0:
+            top_k_sentences = []
+            references = [sentence]
+            for _ in range(top_k):
+                # Generate candidates
+                candidates = self.get_candidates(sentence, perturb_num, min_char_perturb_num, max_char_perturb_num, min_word_len)
+                fillered_candidate = self.filter(candidates, references, top_k=1, last_k=0)["top_k"][0]
+                top_k_sentences.append(fillered_candidate)
+                references.append(fillered_candidate)
+            returns["top_k"] = top_k_sentences
+        # Last k
+        if last_k > 0:
+            last_k_sentences = []
+            references = [sentence]
+            for _ in range(last_k):
+                # Generate candidates
+                candidates = self.get_candidates(sentence, perturb_num, min_char_perturb_num, max_char_perturb_num, min_word_len)
+                fillered_candidate = self.filter(candidates, references, top_k=0, last_k=1)["last_k"][0]
+                last_k_sentences.append(fillered_candidate)
+                references.append(fillered_candidate)
+            returns["last_k"] = last_k_sentences
+        return returns
 
 
 class NarrowSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
@@ -436,7 +542,7 @@ class NarrowSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
         adv_samples = []
         pert_words = words.copy()
         for i in range(perturb_num):
-            if mode == "top_k":
+            if mode == "top_k" or mode == "maxmin_k":
                 target_word_id = sorted_word_indices[i]
             else:
                 target_word_id = sorted_word_indices[-(i+1)]
@@ -446,38 +552,18 @@ class NarrowSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
             sorted_indices = self.candidates_ranking(candidates, original_sent)
             # Update pert_words
             if i < perturb_num - 1:
-                if mode == "top_k":
+                if mode == "top_k" or mode == "minmax_k":
                     pert_words = sentence2words(candidates[sorted_indices[0]])
                 else:
                     pert_words = sentence2words(candidates[sorted_indices[-1]])
             else:
                 for k in range(min(k, len(candidates))):
                     t_pert_words = pert_words.copy()
-                    if mode == "top_k":
+                    if mode == "top_k" or mode == "minmax_k":
                         t_pert_words = sentence2words(candidates[sorted_indices[k]])
                     else:
                         t_pert_words = sentence2words(candidates[sorted_indices[-(k+1)]])
                     adv_samples.append(words2sentence(t_pert_words))
-                # The candidates are not enough for the target top_k, continue searching
-                if len(adv_samples) < k:
-                    for j in range(len(sorted_word_indices) - perturb_num):
-                        if mode == "top_k":
-                            target_word_id = sorted_word_indices[i+j+1]
-                        else:
-                            target_word_id = sorted_word_indices[-(i+j+2)]
-                        char_perturb_num = char_perturb_nums[i]
-                        # Generate candidates
-                        candidates = self.get_candidates(pert_words, target_word_id, char_perturb_num, min_word_len)
-                        sorted_indices = self.candidates_ranking(candidates, original_sent)
-                        for k in range(min(k, len(candidates))):
-                            t_pert_words = pert_words.copy()
-                            if mode == "top_k":
-                                t_pert_words = sentence2words(candidates[sorted_indices[k]])
-                            else:
-                                t_pert_words = sentence2words(candidates[sorted_indices[-(k+1)]])
-                            adv_samples.append(words2sentence(t_pert_words))
-                        if len(adv_samples) >= k:
-                            break
                 if len(adv_samples) < k:
                     print(f"(Warning): {mode} of {k} is too large. Output size of {mode} will be smaller than expected.")
         return adv_samples
@@ -486,29 +572,55 @@ class NarrowSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
             sentence,
             top_k=1,
             last_k=1,
+            minmax_k=1,
+            maxmin_k=1,
             perturb_num=1,
             min_char_perturb_num=1,
             max_char_perturb_num=1,
             min_word_len=3,
         ):
+        returns = {}
         # Top k
-        top_k_sents = self.generate_adversarial_samples(sentence, 
-                                                        k=top_k, 
-                                                        mode="top_k", 
-                                                        perturb_num=perturb_num, 
-                                                        min_char_perturb_num=min_char_perturb_num, 
-                                                        max_char_perturb_num=max_char_perturb_num, 
-                                                        min_word_len=min_word_len)
-
+        if top_k > 0:
+            top_k_sents = self.generate_adversarial_samples(sentence, 
+                                                            k=top_k, 
+                                                            mode="top_k", 
+                                                            perturb_num=perturb_num, 
+                                                            min_char_perturb_num=min_char_perturb_num, 
+                                                            max_char_perturb_num=max_char_perturb_num, 
+                                                            min_word_len=min_word_len)
+            returns["top_k"] = top_k_sents
         # Last k
-        last_k_sents = self.generate_adversarial_samples(sentence, 
-                                                         k=last_k, 
-                                                         mode="last_k", 
-                                                         perturb_num=perturb_num, 
-                                                         min_char_perturb_num=min_char_perturb_num, 
-                                                         max_char_perturb_num=max_char_perturb_num, 
-                                                         min_word_len=min_word_len)
-        return top_k_sents, last_k_sents
+        if last_k > 0:
+            last_k_sents = self.generate_adversarial_samples(sentence, 
+                                                             k=last_k, 
+                                                             mode="last_k", 
+                                                             perturb_num=perturb_num, 
+                                                             min_char_perturb_num=min_char_perturb_num, 
+                                                             max_char_perturb_num=max_char_perturb_num, 
+                                                             min_word_len=min_word_len)
+            returns["last_k"] = last_k_sents
+        # Min-Max k
+        if minmax_k > 0:
+            minmax_k_sents = self.generate_adversarial_samples(sentence, 
+                                                             k=minmax_k, 
+                                                             mode="minmax_k", 
+                                                             perturb_num=perturb_num, 
+                                                             min_char_perturb_num=min_char_perturb_num, 
+                                                             max_char_perturb_num=max_char_perturb_num, 
+                                                             min_word_len=min_word_len)
+            returns["minmax_k"] = minmax_k_sents
+        # Max-Min k
+        if maxmin_k > 0:
+            maxmin_k_sents = self.generate_adversarial_samples(sentence, 
+                                                             k=maxmin_k, 
+                                                             mode="maxmin_k", 
+                                                             perturb_num=perturb_num, 
+                                                             min_char_perturb_num=min_char_perturb_num, 
+                                                             max_char_perturb_num=max_char_perturb_num, 
+                                                             min_word_len=min_word_len)
+            returns["maxmin_k"] = maxmin_k_sents
+        return returns
 
 
 class DiversionNarrowSearchAdversarialCharacterAttacker(NarrowSearchAdversarialCharacterAttacker):
@@ -534,14 +646,14 @@ class DiversionNarrowSearchAdversarialCharacterAttacker(NarrowSearchAdversarialC
 
         adv_samples = []
         references = [original_sent]
-        for _ in tqdm(range(k)):
+        for _ in range(k):
             pert_words = words.copy()
             # Get word indices sorted by importantness
             sorted_word_indices = [word_id for word_id in self.word_importance_ranking(words, references) if word_id in valid_indices]
             # Determine number of character perturbations for each word_id
             char_perturb_nums = np.random.choice(list(range(min_char_perturb_num, max_char_perturb_num + 1)), size=perturb_num, replace=True)
             for i in range(perturb_num):
-                if mode == "top_k":
+                if mode == "top_k" or mode == "maxmin_k":
                     target_word_id = sorted_word_indices[i]
                 else:
                     target_word_id = sorted_word_indices[-(i+1)]
@@ -550,7 +662,7 @@ class DiversionNarrowSearchAdversarialCharacterAttacker(NarrowSearchAdversarialC
                 candidates = self.get_candidates(pert_words, target_word_id, char_perturb_num, min_word_len)
                 sorted_indices = self.candidates_ranking(candidates, references)
                 # Update pert_words
-                if mode == "top_k":
+                if mode == "top_k" or mode == "minmax_k":
                     pert_words = sentence2words(candidates[sorted_indices[0]])
                 else:
                     pert_words = sentence2words(candidates[sorted_indices[-1]])
@@ -563,15 +675,15 @@ class DiversionNarrowSearchAdversarialCharacterAttacker(NarrowSearchAdversarialC
 
 
 class BeamSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
-    def __init__(self, allow_insert=True, allow_drop=True, allow_swap=True, allow_substitute=True, keyboard_constrain=False):
+    def __init__(self, allow_insert=True, allow_drop=True, allow_swap=True, allow_substitute=True, keyboard_constrain=False, allow_numeric=False):
         self.allow_insert = allow_insert
         self.allow_drop = allow_drop
         self.allow_swap = allow_swap
         self.allow_substitute = allow_substitute
-        self.insert_attacker = InsertCharacterAttacker(keyboard_constrain)
-        self.drop_attacker = DropCharacterAttacker(keyboard_constrain)
-        self.swap_attacker = SwapCharacterAttacker(keyboard_constrain)
-        self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain)
+        self.insert_attacker = InsertCharacterAttacker(keyboard_constrain, allow_numeric)
+        self.drop_attacker = DropCharacterAttacker(keyboard_constrain, allow_numeric)
+        self.swap_attacker = SwapCharacterAttacker(keyboard_constrain, allow_numeric)
+        self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain, allow_numeric)
 
     def get_candidates(self, tokens, word_id, char_id):
         target_word = list(tokens[word_id])
@@ -622,14 +734,14 @@ class BeamSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
         adv_samples = []
         pert_words = words.copy()
         for i in range(perturb_num):
-            if mode == "top_k":
+            if mode == "top_k" or mode == "maxmin_k" or mode == "maxminmax_k":
                 target_word_id = sorted_word_indices[i]
             else:
                 target_word_id = sorted_word_indices[-(i+1)]
             for j in range(min(len(pert_words[target_word_id]), char_perturb_nums[i])):
                 # Get character indices sorted by importantness
                 sorted_char_indices = self.char_importance_ranking(pert_words, target_word_id)
-                if mode == "top_k":
+                if mode == "top_k" or mode == "minmax_k" or mode == "minmaxmin_k":
                     target_char_id = sorted_char_indices[0]
                 else:
                     target_char_id = sorted_char_indices[-1]
@@ -638,37 +750,18 @@ class BeamSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
                 sorted_indices = self.candidates_ranking(candidates, original_sent)
                 # Update pert_words
                 if i < perturb_num - 1 or j < char_perturb_nums[i] - 1:
-                    if mode == "top_k":
+                    if mode == "top_k" or mode == "minmax_k" or mode == "maxminmax_k":
                         pert_words = sentence2words(candidates[sorted_indices[0]])
                     else:
                         pert_words = sentence2words(candidates[sorted_indices[-1]])
                 else:
                     for k in range(min(k, len(candidates))):
                         t_pert_words = pert_words.copy()
-                        if mode == "top_k":
+                        if mode == "top_k" or mode == "minmax_k" or mode == "maxminmax_k":
                             t_pert_words = sentence2words(candidates[sorted_indices[k]])
                         else:
                             t_pert_words = sentence2words(candidates[sorted_indices[-(k+1)]])
                         adv_samples.append(words2sentence(t_pert_words))
-                    # The candidates are not enough for the target top_k, continue searching a little bit
-                    if len(adv_samples) < k:
-                        for n in range(len(pert_words[target_word_id]) - char_perturb_nums[i]):
-                            if mode == "top_k":
-                                target_char_id = sorted_char_indices[n+1]
-                            else:
-                                target_char_id = sorted_char_indices[-(n+2)]
-                            # Get candidates
-                            candidates = self.get_candidates(pert_words, target_word_id, target_char_id)
-                            sorted_indices = self.candidates_ranking(candidates, original_sent)
-                            for k in range(min(k, len(candidates))):
-                                t_pert_words = pert_words.copy()
-                                if mode == "top_k":
-                                    t_pert_words = sentence2words(candidates[sorted_indices[k]])
-                                else:
-                                    t_pert_words = sentence2words(candidates[sorted_indices[-(k+1)]])
-                                adv_samples.append(words2sentence(t_pert_words))
-                            if len(adv_samples) >= k:
-                                break
                     if len(adv_samples) < k:
                         print(f"(Warning): {mode} of {k} is too large. Output size of {mode} will be smaller than expected.")
         return adv_samples
@@ -677,29 +770,77 @@ class BeamSearchAdversarialCharacterAttacker(BaseAdversarialAttacker):
             sentence, 
             top_k=1, 
             last_k=1,
+            minmax_k=1,
+            maxmin_k=1,
+            minmaxmin_k=1,
+            maxminmax_k=1,
             perturb_num=1, 
             min_char_perturb_num=1, 
             max_char_perturb_num=1, 
             min_word_len=3
         ):
+        returns = {}
         # Top k
-        top_k_sents = self.generate_adversarial_samples(sentence, 
-                                                        k=top_k, 
-                                                        mode="top_k", 
-                                                        perturb_num=perturb_num, 
-                                                        min_char_perturb_num=min_char_perturb_num, 
-                                                        max_char_perturb_num=max_char_perturb_num, 
-                                                        min_word_len=min_word_len)
-
+        if top_k > 0:
+            top_k_sents = self.generate_adversarial_samples(sentence, 
+                                                            k=top_k, 
+                                                            mode="top_k", 
+                                                            perturb_num=perturb_num, 
+                                                            min_char_perturb_num=min_char_perturb_num, 
+                                                            max_char_perturb_num=max_char_perturb_num, 
+                                                            min_word_len=min_word_len)
+            returns["top_k"] = top_k_sents
         # Last k
-        last_k_sents = self.generate_adversarial_samples(sentence, 
-                                                         k=last_k, 
-                                                         mode="last_k", 
-                                                         perturb_num=perturb_num, 
-                                                         min_char_perturb_num=min_char_perturb_num, 
-                                                         max_char_perturb_num=max_char_perturb_num, 
-                                                         min_word_len=min_word_len)
-        return top_k_sents, last_k_sents
+        if last_k > 0:
+            last_k_sents = self.generate_adversarial_samples(sentence, 
+                                                            k=last_k, 
+                                                            mode="last_k", 
+                                                            perturb_num=perturb_num, 
+                                                            min_char_perturb_num=min_char_perturb_num, 
+                                                            max_char_perturb_num=max_char_perturb_num, 
+                                                            min_word_len=min_word_len)
+            returns["last_k"] = last_k_sents
+        # Min-Max k
+        if minmax_k > 0:
+            minmax_k_sents = self.generate_adversarial_samples(sentence, 
+                                                            k=minmax_k, 
+                                                            mode="minmax_k", 
+                                                            perturb_num=perturb_num, 
+                                                            min_char_perturb_num=min_char_perturb_num, 
+                                                            max_char_perturb_num=max_char_perturb_num, 
+                                                            min_word_len=min_word_len)
+            returns["minmax_k"] = minmax_k_sents
+        # Max-Min k
+        if maxmin_k > 0:
+            maxmin_k_sents = self.generate_adversarial_samples(sentence, 
+                                                            k=maxmin_k, 
+                                                            mode="maxmin_k", 
+                                                            perturb_num=perturb_num, 
+                                                            min_char_perturb_num=min_char_perturb_num, 
+                                                            max_char_perturb_num=max_char_perturb_num, 
+                                                            min_word_len=min_word_len)
+            returns["maxmin_k"] = maxmin_k_sents
+        # Min-Max-Min k
+        if minmaxmin_k > 0:
+            minmaxmin_k_sents = self.generate_adversarial_samples(sentence, 
+                                                            k=minmaxmin_k, 
+                                                            mode="minmaxmin_k", 
+                                                            perturb_num=perturb_num, 
+                                                            min_char_perturb_num=min_char_perturb_num, 
+                                                            max_char_perturb_num=max_char_perturb_num, 
+                                                            min_word_len=min_word_len)
+            returns["minmaxmin_k"] = minmaxmin_k_sents
+        # Max-Min-Max k
+        if maxminmax_k > 0:
+            maxminmax_k_sents = self.generate_adversarial_samples(sentence, 
+                                                            k=maxminmax_k, 
+                                                            mode="maxminmax_k", 
+                                                            perturb_num=perturb_num, 
+                                                            min_char_perturb_num=min_char_perturb_num, 
+                                                            max_char_perturb_num=max_char_perturb_num, 
+                                                            min_word_len=min_word_len)
+            returns["maxminmax_k"] = maxminmax_k_sents
+        return returns
 
 
 class DiversionBeamSearchAdversarialCharacterAttacker(BeamSearchAdversarialCharacterAttacker):
@@ -725,21 +866,21 @@ class DiversionBeamSearchAdversarialCharacterAttacker(BeamSearchAdversarialChara
 
         adv_samples = []
         references = [original_sent]
-        for _ in tqdm(range(k)):
+        for _ in range(k):
             pert_words = words.copy()
             # Get word indices sorted by importantness
             sorted_word_indices = [word_id for word_id in self.word_importance_ranking(words, references) if word_id in valid_indices]
             # Determine number of character perturbations for each word_id
             char_perturb_nums = np.random.choice(list(range(min_char_perturb_num, max_char_perturb_num + 1)), size=perturb_num, replace=True)
             for i in range(perturb_num):
-                if mode == "top_k":
+                if mode == "top_k" or mode == "maxmin_k" or mode == "maxminmax_k":
                     target_word_id = sorted_word_indices[i]
                 else:
                     target_word_id = sorted_word_indices[-(i+1)]
                 for j in range(min(len(pert_words[target_word_id]), char_perturb_nums[i])):
                     # Get character indices sorted by importantness
                     sorted_char_indices = self.char_importance_ranking(pert_words, target_word_id, references)
-                    if mode == "top_k":
+                    if mode == "top_k" or mode == "minmax_k" or mode == "minmaxmin_k":
                         target_char_id = sorted_char_indices[0]
                     else:
                         target_char_id = sorted_char_indices[-1]
@@ -747,7 +888,7 @@ class DiversionBeamSearchAdversarialCharacterAttacker(BeamSearchAdversarialChara
                     candidates = self.get_candidates(pert_words, target_word_id, target_char_id)
                     sorted_indices = self.candidates_ranking(candidates, references)
                     # Update pert_words
-                    if mode == "top_k":
+                    if mode == "top_k" or mode == "minmax_k" or mode == "maxminmax_k":
                         pert_words = sentence2words(candidates[sorted_indices[0]])
                     else:
                         pert_words = sentence2words(candidates[sorted_indices[-1]])
