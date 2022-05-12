@@ -40,9 +40,13 @@ def chars2word(chars):
 
 
 class BaseCharacterAttacker:
-    def __init__(self, keyboard_constrain=False, allow_numeric=False):
+    def __init__(self, keyboard_constrain=False, allow_numeric=False, random_seed=None):
         self.keyboard_constrain = keyboard_constrain
         self.allow_numeric = allow_numeric
+        self.random_seed = random_seed
+
+        if self.random_seed is not None:
+            np.random.seed(self.random_seed)
 
     @staticmethod
     def get_word_id(tokens, min_word_len=3):
@@ -225,15 +229,15 @@ class SubstituteCharacterAttacker(BaseCharacterAttacker):
 
 
 class RandomCharacterAttacker:
-    def __init__(self, insert_p=0.25, drop_p=0.25, swap_p=0.25, substitute_p=0.25, keyboard_constrain=False, allow_numeric=False):
+    def __init__(self, insert_p=0.25, drop_p=0.25, swap_p=0.25, substitute_p=0.25, keyboard_constrain=False, allow_numeric=False, random_seed=None):
         self.insert_p = insert_p
         self.drop_p = drop_p
         self.swap_p = swap_p
         self.substitute_p = substitute_p
-        self.insert_attacker = InsertCharacterAttacker(keyboard_constrain, allow_numeric)
-        self.drop_attacker = DropCharacterAttacker(keyboard_constrain, allow_numeric)
-        self.swap_attacker = SwapCharacterAttacker(keyboard_constrain, allow_numeric)
-        self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain, allow_numeric)
+        self.insert_attacker = InsertCharacterAttacker(keyboard_constrain, allow_numeric, random_seed)
+        self.drop_attacker = DropCharacterAttacker(keyboard_constrain, allow_numeric, random_seed)
+        self.swap_attacker = SwapCharacterAttacker(keyboard_constrain, allow_numeric, random_seed)
+        self.substitute_attacker = SubstituteCharacterAttacker(keyboard_constrain, allow_numeric, random_seed)
 
     def _augment(self,
             sentence=None, 
